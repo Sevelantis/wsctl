@@ -1,0 +1,47 @@
+# =============================================================================
+# docker-compose.client.yaml — THIS project's own services + workspace tweaks.
+# -----------------------------------------------------------------------------
+# CLIENT-OWNED (lives in .devcontainer/, NEVER in the devcontainers/ platform submodule — that repo is
+# shared across projects and must stay generic). This file MERGES over the platform docker-compose.yaml
+# (add-only): add new services or override `workspace`; it never touches gateway/observability. Everything
+# joins the SAME compose project as the workspace (COMPOSE_PROJECT_NAME), on the SAME internal network.
+#
+# Two ways to reach a service:
+#   - internal TCP (DB/cache/queue): stays on the wall — reached by name `example1:<PORT>` from workspace
+#     code. No host URL.
+#   - web UI: gets a host URL AUTOMATICALLY via the platform ingress, no `ports:` —
+#       http://<service>.<PORT>.<COMPOSE_PROJECT_NAME>.localhost:<DEVCONTAINER_INGRESS_PORT>
+#       (behind the ingress admin basic_auth gate).
+#
+# Relative bind paths resolve against the platform compose dir (devcontainers/), so `../<path>` lands at the
+# repo root — the same way the platform's `..:/workspaces/repo` mount works.
+# `central-gateway-internal` is NOT redeclared — Compose merges top-level networks across the file set, so
+# the platform base's definition (internal: true, project-scoped) is reused.
+# =============================================================================
+services:
+
+  # --- workspace override: add volumes / env / build args; the platform owns the base definition ---
+  # workspace:
+  #   environment:
+  #     - EXAMPLE_FLAG=1
+
+  # --- example1 — an internal TCP service (DB/cache/queue): reached as `example1:<PORT>`, no host URL ---
+  # example1:
+  #   container_name: ${COMPOSE_PROJECT_NAME}-example1   # platform naming convention
+  #   image: your/image:tag                              # official + pinned; pulled host-side by docker
+  #   networks: [central-gateway-internal]               # the shared no-internet wall the workspace lives on
+  #   # environment: {}                                  # service config here
+  #   # tmpfs: ["/var/lib/example1"]                     # ephemeral dev store, re-created each start
+  #   restart: unless-stopped
+
+  # --- example2 — a web UI reached via the platform ingress (no `ports:` — the ingress exposes it) ---
+  # example2:
+  #   container_name: ${COMPOSE_PROJECT_NAME}-example2
+  #   image: your/image:tag
+  #   depends_on: [example1]
+  #   networks: [central-gateway-internal]
+  #   # environment: {}
+  #   # ingress maps the container's web port →
+  #   #   http://example2.<PORT>.${COMPOSE_PROJECT_NAME}.localhost:<DEVCONTAINER_INGRESS_PORT>
+
+# No top-level `networks:`/`volumes:` — the platform base owns the network; use tmpfs for ephemeral dev data.

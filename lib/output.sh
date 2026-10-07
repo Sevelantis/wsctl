@@ -1,0 +1,11 @@
+# output — stderr logging + TTY-aware colour. COLOR=1 force · 0 plain · auto (default).
+COLOR="${COLOR:-auto}"
+[ "$COLOR" = auto ] && { [ -t 2 ] && COLOR=1 || COLOR=0; }
+if [ "$COLOR" = 0 ]; then C_RED=""; C_YEL=""; C_GRN=""; C_DIM=""; C_BLD=""; C_RST=""
+else C_RED=$'\033[31m'; C_YEL=$'\033[33m'; C_GRN=$'\033[32m'; C_DIM=$'\033[2m'; C_BLD=$'\033[1m'; C_RST=$'\033[0m'; fi
+
+log()  { printf '%s%s%s\n' "$C_DIM" "$*" "$C_RST" >&2; }
+info() { printf '%s\n' "$*" >&2; }
+ok()   { printf '%s✓%s %s\n' "$C_GRN" "$C_RST" "$*" >&2; }
+warn() { printf '%s⚠%s %s\n' "$C_YEL" "$C_RST" "$*" >&2; }
+die()  { printf '%s✗ %s%s\n' "$C_RED$C_BLD" "$*" "$C_RST" >&2; exit "${2:-1}"; }
