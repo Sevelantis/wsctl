@@ -38,11 +38,12 @@ setup_check() {   # report present/missing config + submodules; non-zero if inco
 }
 
 cmd_setup() {
-  local force="" check="" a
+  local force="" check="" invisible="" a
   for a in "$@"; do case "$a" in
     --force) force="--force" ;;
     --check) check=1 ;;
-    -h|--help) info "usage: wsctl setup [--force] [--check]"; return 0 ;;
+    --invisible) invisible=1 ;;
+    -h|--help) info "usage: wsctl setup [--force] [--check] [--invisible]"; return 0 ;;
     *) die "setup: unknown arg '$a'" 2 ;;
   esac; done
 
@@ -61,6 +62,15 @@ cmd_setup() {
     persist_token "$tok"; ok "token saved to .env (0600)"
   else
     log "$TOKEN_VAR already set in .env"
+  fi
+
+  # Invisible mode (opt-in for now): plain clones hidden via .git/info/exclude — no pin, no .gitmodules.
+  if [ -n "$invisible" ]; then
+    provision_invisible "$tok" || die "setup incomplete — a submodule could not be set up (see ⚠ above)"
+    echo >&2
+    ok "onboarding ready — submodules in place (invisible)."
+    info "  next: set COMPOSE_PROJECT_NAME + DEVCONTAINER_INGRESS_PORT in .env, then Rebuild in Container."
+    return 0
   fi
 
   local rc=0 s out
