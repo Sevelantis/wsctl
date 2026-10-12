@@ -1,4 +1,4 @@
-# verbs — setup · update · status, plus arg dispatch. (doctor/health/reset: reserved slots, next gate.)
+# verbs — install · update · status · reset, plus arg dispatch. (doctor = reset+install, deferred.)
 
 usage() { cat <<'EOF'
 wsctl — workspace control
@@ -9,19 +9,21 @@ USAGE
   wsctl <command> [options]
 
 COMMANDS
-  setup     Lay config from templates, capture the token, clone/register both submodules. Idempotent.
+  install   Lay config from templates, capture the token, clone both submodules. Idempotent. [--invisible]
   update    Pull both submodules' current branch (git pull --ff-only). [submodule] optional.
   status    Read-only: each submodule's branch + dirty state. No network, no token.
+  reset     Clean the submodules' local git-state so 'install' can rebuild. Never touches shared files.
 
 OPTIONS
   -h, --help      Show this help
       --no-color  Plain output (auto when piped)
-  setup --force   Overwrite scaffolded config from templates
-  setup --check   Report present/missing config + submodules; non-zero if incomplete
+  install --force     Overwrite scaffolded config from templates
+  install --check     Report present/missing config + submodules; non-zero if incomplete
+  install --invisible Hide the submodules (plain clones + .git/info/exclude; no pin, no .gitmodules)
 EOF
 }
 
-setup_check() {   # report present/missing config + submodules; non-zero if incomplete
+install_check() {   # report present/missing config + submodules; non-zero if incomplete
   local incomplete=0 s name t
   info "config:"
   shopt -s nullglob dotglob
@@ -37,17 +39,17 @@ setup_check() {   # report present/missing config + submodules; non-zero if inco
   return "$incomplete"
 }
 
-cmd_setup() {
+cmd_install() {
   local force="" check="" invisible="" a
   for a in "$@"; do case "$a" in
     --force) force="--force" ;;
     --check) check=1 ;;
     --invisible) invisible=1 ;;
-    -h|--help) info "usage: wsctl setup [--force] [--check] [--invisible]"; return 0 ;;
-    *) die "setup: unknown arg '$a'" 2 ;;
+    -h|--help) info "usage: wsctl install [--force] [--check] [--invisible]"; return 0 ;;
+    *) die "install: unknown arg '$a'" 2 ;;
   esac; done
 
-  [ -n "$check" ] && { setup_check; return $?; }
+  [ -n "$check" ] && { install_check; return $?; }
 
   provision_config "$force"
 
@@ -66,7 +68,7 @@ cmd_setup() {
 
   # Invisible mode (opt-in for now): plain clones hidden via .git/info/exclude — no pin, no .gitmodules.
   if [ -n "$invisible" ]; then
-    provision_invisible "$tok" || die "setup incomplete — a submodule could not be set up (see ⚠ above)"
+    provision_invisible "$tok" || die "install incomplete — a submodule could not be set up (see ⚠ above)"
     echo >&2
     ok "onboarding ready — submodules in place (invisible)."
     info "  next: set COMPOSE_PROJECT_NAME + DEVCONTAINER_INGRESS_PORT in .env, then Rebuild in Container."
@@ -107,7 +109,7 @@ cmd_setup() {
   done
 
   echo >&2
-  [ "$rc" = 0 ] || die "setup incomplete — a submodule could not be set up (see ⚠ above)"
+  [ "$rc" = 0 ] || die "install incomplete — a submodule could not be set up (see ⚠ above)"
   ok "onboarding ready — submodules in place."
   info "  next: set COMPOSE_PROJECT_NAME + DEVCONTAINER_INGRESS_PORT in .env, then Rebuild in Container."
 }
@@ -116,13 +118,13 @@ cmd_update() {
   local only="" a
   for a in "$@"; do case "$a" in
     -h|--help) info "usage: wsctl update [submodule]"; return 0 ;;
-    -*) die "update takes no flags ('--force' belongs to setup) — got '$a'" 2 ;;
+    -*) die "update takes no flags ('--force' belongs to install) — got '$a'" 2 ;;
     *) only="$a" ;;
   esac; done
 
   require_git_version
   local tok; tok="$(read_token)"
-  [ -n "$tok" ] || die "$TOKEN_VAR is not set in $ROOT/.env — add your read-only token, or run 'wsctl setup'."
+  [ -n "$tok" ] || die "$TOKEN_VAR is not set in $ROOT/.env — add your read-only token, or run 'wsctl install'."
 
   local subs="$SUBMODULES"
   if [ -n "$only" ]; then
@@ -132,7 +134,7 @@ cmd_update() {
 
   local rc=0 s br out
   for s in $subs; do
-    [ -e "$ROOT/$s/.git" ] || { warn "$s: not cloned — run 'wsctl setup'"; rc=1; continue; }
+    [ -e "$ROOT/$s/.git" ] || { warn "$s: not cloned — run 'wsctl install'"; rc=1; continue; }
     discard_dirty "$s"                                 # F7: platform-owned content; local edits are disposable
     br="$(current_branch "$s")"
     [ "$br" = "(detached)" ] && { warn "$s: detached HEAD — checkout a branch first, then re-run"; rc=1; continue; }
@@ -162,6 +164,26 @@ cmd_status() {
   done
 }
 
+cmd_reset() {   # clean the submodules' local git-state so `install` can rebuild. Shared files untouched.
+  local a s
+  for a in "$@"; do case "$a" in
+    -h|--help) info "usage: wsctl reset"; return 0 ;;
+    *) die "reset: unknown arg '$a'" 2 ;;
+  esac; done
+
+  git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || die "$ROOT is not a git repository — nothing to reset"
+  info "→ reset: cleaning the submodules' local git-state (shared files untouched) …"
+  for s in $SUBMODULES; do
+    clean_broken_checkout "$s"                         # deinit + rm .git/modules/<s> + rm the folder (idempotent)
+    unstage_pin "$s"                                   # drop any staged gitlink; leave a committed bookmark alone
+    ok "  $s: cleaned"
+  done
+  vis_remove_exclude                                   # strip the invisible hiding block so install re-applies fresh
+  echo >&2
+  ok "reset done — run 'wsctl install' to rebuild."
+  info "  shared files (.env / .mcp.json / .npmrc / docker-compose.client.yaml) were left untouched."
+}
+
 main() {
   local cmd="" args=()
   while [ $# -gt 0 ]; do
@@ -174,9 +196,10 @@ main() {
   done
   [ -n "$cmd" ] || { usage >&2; exit 2; }              # usage-on-error → stderr; explicit --help → stdout
   case "$cmd" in
-    setup)  cmd_setup  ${args[@]+"${args[@]}"} ;;
-    update) cmd_update ${args[@]+"${args[@]}"} ;;
-    status) cmd_status ${args[@]+"${args[@]}"} ;;
+    install) cmd_install ${args[@]+"${args[@]}"} ;;
+    update)  cmd_update  ${args[@]+"${args[@]}"} ;;
+    status)  cmd_status  ${args[@]+"${args[@]}"} ;;
+    reset)   cmd_reset   ${args[@]+"${args[@]}"} ;;
     *)      die "unknown command '$cmd' (try: wsctl --help)" 2 ;;
   esac
 }
