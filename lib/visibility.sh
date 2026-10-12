@@ -15,6 +15,14 @@ vis_apply_exclude() {
   { printf '%s\n' "$EXCLUDE_BEGIN"; for s in $SUBMODULES; do printf '/%s/\n' "$s"; done; printf '%s\n' "$EXCLUDE_END"; } >> "$f"
 }
 
+# vis_remove_exclude — strip wsctl's fenced block from .git/info/exclude (used by `reset`, so a fresh
+# `install` re-applies it clean). Idempotent: a no-op when the block/file is absent.
+vis_remove_exclude() {
+  local f="$ROOT/.git/info/exclude"
+  [ -f "$f" ] || return 0
+  sed "/$EXCLUDE_BEGIN/,/$EXCLUDE_END/d" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
 # provision_invisible <token> — clone (or float) each managed submodule as a plain clone, then hide it.
 # Never touches submodule machinery (add/pin/.gitmodules/ignore) — that's normal mode's job.
 provision_invisible() {
