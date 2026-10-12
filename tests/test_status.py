@@ -18,7 +18,7 @@ def test_help_lists_the_verbs(client):
     """--help is the public contract; it must exit 0 (to stdout) and name every shipped verb."""
     r = client.wsctl("--help")
     assert r.returncode == 0
-    assert all(verb in r.stdout for verb in ("setup", "update", "status"))
+    assert all(verb in r.stdout for verb in ("install", "update", "status"))
 
 
 def test_no_color_emits_no_ansi(client):
