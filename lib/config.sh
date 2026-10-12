@@ -28,6 +28,7 @@ provision_config() {
   local force="${1:-}" t name dest laid=0
   shopt -s nullglob dotglob
   for t in "$WSCTL_HOME"/templates/*; do
+    [ -f "$t" ] || continue                       # only regular files are config blueprints — skip stray dirs/caches
     name="$(basename -- "$t")"; dest="$ROOT/$name"
     if [ -e "$dest" ] && [ "$force" != "--force" ]; then log "  config: $name present (keep)"; continue; fi
     cp -- "$t" "$dest"; ok "  config: $name"; laid=$((laid + 1))
