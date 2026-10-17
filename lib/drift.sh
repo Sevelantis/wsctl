@@ -1,18 +1,21 @@
-# drift — the read-only drift enumerator behind `health`: reports what's wrong, changes nothing.
-# Invisible-mode scope (the only mode): each managed submodule must be PRESENT and ON ITS BRANCH, and the
-# hide-exclude must be applied. Freshness ("behind the center?") is out of scope here (needs network + key).
-# Keyless and read-only: it never clones, pulls, or writes. Echoes ONE deviation per line, tab-separated as
-#   <code>\t<target>\t<human message>
-# and prints nothing at all when the workspace is at target. Codes: missing | detached | exclude.
+# drift — the read-only checks behind `health`; they report problems and never change anything.
 
-drift_enumerate() {
-  local s
+# health_report — print one line per check (pass or fail) to stderr; return 1 if any failed, else 0.
+health_report() {
+  local s rc=0
   for s in $SUBMODULES; do
     if [ ! -e "$ROOT/$s/.git" ]; then
-      printf 'missing\t%s\t%s not present (needs re-clone with the RO key)\n' "$s" "$s"
+      warn "$s — not present (re-clone with the read-only key, or run 'reinstall')"; rc=1
     elif ! git -C "$ROOT/$s" symbolic-ref -q HEAD >/dev/null 2>&1; then
-      printf 'detached\t%s\t%s is detached — no branch to float\n' "$s" "$s"
+      warn "$s — detached HEAD, no branch to float (checkout a branch, then 'update')"; rc=1
+    else
+      ok "$s — present, on $(current_branch "$s")"
     fi
   done
-  vis_exclude_applied || printf 'exclude\t-\t.git/info/exclude is missing wsctl entries — submodules not hidden\n'
+  if vis_exclude_applied; then
+    ok "hidden — .git/info/exclude hides the platform folders"
+  else
+    warn "hidden — .git/info/exclude is missing wsctl entries, folders not hidden (run 'reinstall')"; rc=1
+  fi
+  return "$rc"
 }

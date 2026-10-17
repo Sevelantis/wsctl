@@ -1,9 +1,6 @@
-"""Centralized git-isolated-env lifecycle for the wsctl unit suite.
+"""conftest — shared fixtures: throwaway git repos with local bare remotes, so tests need no network or real token.
 
-Each test runs the real `git` + `wsctl.sh` against throwaway repos whose submodule
-"remotes" are local bare repos — no network, no real token. A dummy token exercises the
-full token wiring; the github-scoped auth header never applies to a local path, so the
-pull still succeeds. FAKE values only — never read a real `.env`, never assert on one.
+Security: only fake tokens are used; tests never read a real `.env`.
 """
 
 import os
@@ -17,6 +14,9 @@ WSCTL = ROOT / "wsctl.sh"
 SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
 DUMMY_TOKEN = "github_pat_DUMMY_0000000000000000000000"
+
+
+# --- helpers ---
 
 
 def _run(cmd, cwd, env, check=True):
@@ -43,9 +43,12 @@ def _env(home: Path, remote_base: Path) -> dict:
         ),  # git can't walk up past the sandbox root
         WSCTL_REMOTE_BASE=str(
             remote_base
-        ),  # the seam: clone from local bares, not github
+        ),  # clone from local bare repos, not github
     )
     return e
+
+
+# --- fixtures ---
 
 
 @pytest.fixture(scope="session")

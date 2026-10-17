@@ -1,13 +1,4 @@
-"""reinstall — reset then install: rebuild a clean submodule set (the explicit "give me a clean env" verb).
-
-reinstall is a thin composition: `reset` tears down the submodules' local git-state, then `install`
-re-provisions them (invisible). Its job is to DELIVER A CLEAN ENVIRONMENT — so the tests fabricate the
-real messy states a client hits and assert the real on-disk outcome, never a mock. The step-level
-mechanics are owned by the composed verbs' own suites (test_reset.py proves reset removes folders +
-.git/modules + the exclude; test_visibility.py proves invisible install clones + hides); here we prove
-the COMPOSITION delivers clean, and that the reset half genuinely ran (stale content is gone).
-No mocks: conftest gives a real throwaway git repo + real local bare remotes + the real git binary.
-"""
+"""reinstall — reset then install rebuilds a clean submodule set from messy states, without touching shared files."""
 
 import shutil
 
@@ -22,8 +13,7 @@ def _install(client):
 
 
 def test_reinstall_delivers_a_clean_workspace(client):
-    """The happy path: after a working install, `reinstall` still lands both submodules present, with
-    content, on their branch — a clean environment, exit 0."""
+    """After a working install, reinstall must leave both submodules present, with content, on their branch."""
     _install(client)
     r = client.wsctl("reinstall")
     assert r.returncode == 0, f"reinstall failed on a healthy workspace\n{r.stderr}"
@@ -35,8 +25,7 @@ def test_reinstall_delivers_a_clean_workspace(client):
 
 
 def test_reinstall_discards_tangled_state_and_rebuilds(client):
-    """The real recovery use-case: a submodule got tangled (local junk + detached). reinstall must RESET
-    it (the junk is gone — proof the reset half ran) and re-install it fresh on its branch."""
+    """A submodule with local junk and a detached HEAD must be wiped and re-cloned on its branch."""
     _install(client)
     junk = client.path / ".claude" / "LOCAL_JUNK.txt"
     junk.write_text("stale local state that a clean rebuild must erase\n")
@@ -50,8 +39,7 @@ def test_reinstall_discards_tangled_state_and_rebuilds(client):
 
 
 def test_reinstall_works_from_scratch(client):
-    """reinstall on a fresh repo (nothing provisioned yet) is safe: the reset half is a no-op, the install
-    half provisions — so it behaves like install, never errors on 'nothing to reset'."""
+    """On a fresh repo reinstall must act like install, not fail with "nothing to reset"."""
     r = client.wsctl("reinstall")
     assert r.returncode == 0, f"reinstall errored from scratch\n{r.stderr}"
     for sub in SUBMODULES:
@@ -59,7 +47,7 @@ def test_reinstall_works_from_scratch(client):
 
 
 def test_reinstall_preserves_invisibility(client):
-    """reinstall must leave the workspace invisible, like install: no .gitmodules, no staged pin, hidden."""
+    """reinstall must leave the workspace invisible: no .gitmodules, no staged pointer, submodules hidden."""
     _install(client)
     assert client.wsctl("reinstall").returncode == 0
     assert not (client.path / ".gitmodules").exists(), "reinstall created .gitmodules — broke invisibility"
@@ -70,8 +58,7 @@ def test_reinstall_preserves_invisibility(client):
 
 
 def test_reinstall_never_touches_shared_files(client):
-    """The ownership boundary through the composition: reset never touches shared files and install only
-    fills-if-absent — so a client's co-owned files must survive a reinstall untouched."""
+    """Client-owned shared files must survive reinstall unchanged."""
     _install(client)
     markers = {}
     for name in SHARED:
@@ -84,8 +71,7 @@ def test_reinstall_never_touches_shared_files(client):
 
 
 def test_reinstall_without_a_token_dies_clearly(client):
-    """reinstall needs the key (its install half re-clones): with no token it must hard-stop with a plain
-    message naming the token var, not a cryptic git error."""
+    """Without a token reinstall must stop with a message naming the token variable, not a git error."""
     _install(client)
     (client.path / ".env").write_text("# no token here\n")
     r = client.wsctl("reinstall")

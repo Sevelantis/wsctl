@@ -1,21 +1,21 @@
-# config — the managed submodules, their clone URLs (+ an offline-test seam), and template provisioning.
+# config — the managed submodules, their clone URLs, and template provisioning.
 
 SUBMODULES=".claude devcontainers"      # the two platform submodules this project syncs (single source of truth)
+WSCTL_DIR=".wsctl"                       # the launcher dir (the clone target) — hidden in invisible mode like the submodules
 DEFAULT_BRANCH="master"                  # the branch submodules float on
 TOKEN_VAR="GH_TOKEN_RO_INFRA"            # the read-only key, read from .env at point-of-use
 GH_MATCH="https://github.com/"           # URL-scope for the token header (never bare — only github.com sees it)
 GIT_MIN="2.31"                           # GIT_CONFIG_COUNT support floor
 
-# Submodule visibility mode (the one knob). invisible = SUPPORTED: plain clones hidden via
-# .git/info/exclude (no pin, no .gitmodules — immune to the whole F1–F6 class). normal (committed
-# pins + .gitmodules) is PARKED/unsupported since 2026-10-15 — kept only as a reserved seam so it can
-# return without re-deriving the design. Why + how-to-revive → known-issues.md.
-WSCTL_MODE="${WSCTL_MODE:-invisible}"     # invisible (supported) | normal (parked)
+# Visibility mode. invisible (supported): plain clones hidden via .git/info/exclude, with no committed pin
+# and no .gitmodules. normal (standard committed submodules): reserved, not implemented.
+WSCTL_MODE="${WSCTL_MODE:-invisible}"     # invisible (supported) | normal (reserved)
 
+# valid_submodule <name> — true when <name> is one of the managed submodules.
 valid_submodule() { local x; for x in $SUBMODULES; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
-# url_for <name> — the clone URL. WSCTL_REMOTE_BASE redirects to local bare repos for offline tests
-# (the only test seam; unset = production). It changes only the address, so the tested path is the shipped path.
+# url_for <name> — the clone URL. Setting WSCTL_REMOTE_BASE points clones at local bare repos for offline
+# tests; it changes only the address, so tests run the same code path as production.
 url_for() {
   if [ -n "${WSCTL_REMOTE_BASE:-}" ]; then
     valid_submodule "$1" && { printf '%s/%s.git' "${WSCTL_REMOTE_BASE%/}" "$1"; return 0; }
@@ -28,12 +28,10 @@ url_for() {
   esac
 }
 
-# provision_config [--force] — lay client config from templates/ into the project. Idempotent:
-# never clobbers an existing file unless --force. A template's path RELATIVE to templates/ IS its
-# destination under $ROOT, so a nested blueprint lands in the right place:
+# provision_config — copy templates/ into the project; keeps existing files unless --force.
+# A template's path relative to templates/ is its destination under $ROOT, e.g.:
 #   templates/.mcp.json                            → $ROOT/.mcp.json
 #   templates/.devcontainer/docker-compose.client.yaml → $ROOT/.devcontainer/docker-compose.client.yaml
-# (find -type f picks up dotfiles + nested dirs; parent dirs are created as needed.)
 provision_config() {
   local force="${1:-}" t rel dest laid=0
   while IFS= read -r t; do

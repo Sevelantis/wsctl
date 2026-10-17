@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# lib.sh — shared formatting, unit + volume/image classification helpers.
-# Sourced by docker-space-audit.sh / docker-cleanup.sh / docker-backup.sh.
-# Standalone by design: the whole docker-health/ dir is copied together (see README).
+# lib.sh — shared formatting, unit conversion, and volume/image classification helpers for the docker scripts.
 
 # Color: single knob, ON by default. COLOR=1 (default) color · COLOR=0 plain · COLOR=auto → color
 # only at a terminal (off when piped, for clean logs).

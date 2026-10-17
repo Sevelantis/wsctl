@@ -1,15 +1,4 @@
-"""wsctl docker — the subverb dispatcher (wraps the host-proven docker-health scripts).
-
-Risk this guards: a real client types `wsctl docker clean --volumes --dry-run` and expects it to
-reach the right script with every flag intact (identical to the old standalone `docker-clean`). The
-dispatcher is the only NEW code — the scripts are host-proven under spec 1.7. There is no Docker in
-the sandbox, so Docker BEHAVIOR is covered by that host proof and skipped here; what we prove is the
-WRAPPER seam: routing + flag-forwarding + help + clean failures.
-
-Fidelity: we run the REAL wsctl.sh against a staged copy of the tool whose two docker scripts are
-replaced by arg-recording STUBS — never the real `docker`. The dispatcher code under test is the
-shipped code; only the leaf scripts are stubbed (same spirit as the WSCTL_REMOTE_BASE seam).
-"""
+"""docker — `wsctl docker` routes to the right script with every flag intact; the scripts are stubbed, Docker is never run."""
 
 import shutil
 import subprocess
@@ -20,6 +9,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]  # wsctl/
 STUB = '#!/usr/bin/env bash\necho "STUB $(basename "$0") ARGS: $*"\n'
 WRAPPED = ("docker-space-audit.sh", "docker-cleanup.sh")
+
+
+# --- helpers ---
 
 
 def _stage(tmp_path, keep_all=True):
@@ -46,6 +38,9 @@ def _run(home, *args):
         text=True,
         capture_output=True,
     )
+
+
+# --- routing and help ---
 
 
 def test_bare_docker_prints_help(tmp_path):
@@ -76,6 +71,9 @@ def test_clean_routes_and_forwards_all_flags(tmp_path):
     assert "STUB docker-cleanup.sh ARGS: --volumes --dry-run" in r.stdout
 
 
+# --- failure modes ---
+
+
 def test_unknown_subcommand_fails_cleanly(tmp_path):
     """An unknown subcommand is a non-zero, named error — not a silent no-op or stack trace."""
     r = _run(_stage(tmp_path), "frobnicate")
@@ -84,7 +82,7 @@ def test_unknown_subcommand_fails_cleanly(tmp_path):
 
 
 def test_backup_is_held_behind_with_guidance(tmp_path):
-    """`backup` is intentionally not wired yet — it must point at the old alias, not pretend to work."""
+    """`backup` is not available yet; it must point at the `docker-backup` alias instead of pretending to work."""
     r = _run(_stage(tmp_path), "backup")
     assert r.returncode != 0
     assert "docker-backup" in r.stderr
@@ -100,8 +98,7 @@ def test_missing_wrapped_script_errors(tmp_path):
 
 
 @pytest.mark.skip(
-    reason="no Docker in the sandbox; the audit/clean/backup BEHAVIOR is host-proven under spec 1.7 "
-    "+ the owner's live run. The spike verdict (DECIDE-ON-HOST) is the 1:1 confirmation."
+    reason="no Docker in the sandbox; audit/clean behavior can only be checked on a host with Docker"
 )
 def test_docker_behavior_host_only():
-    """Placeholder marking the deliberate gap: real-Docker behavior is verified on the host, not here."""
+    """Placeholder: real Docker behavior needs a host with Docker and is not tested here."""

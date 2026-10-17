@@ -1,5 +1,6 @@
-# verbs — install · update · status · health · reinstall · reset, plus arg dispatch.
+# verbs — the wsctl commands (install, update, status, health, reinstall, reset) and argument dispatch.
 
+# usage — print the top-level help text.
 usage() { cat <<'EOF'
 wsctl — workspace control
 Sync this project to target state: lay config from templates, hold the read-only token,
@@ -25,7 +26,8 @@ OPTIONS
 EOF
 }
 
-install_check() {   # report present/missing config + submodules; non-zero if incomplete
+# install_check — report which config files and submodules are present; non-zero if any is missing.
+install_check() {
   local incomplete=0 s rel t
   info "config:"
   while IFS= read -r t; do
@@ -39,24 +41,42 @@ install_check() {   # report present/missing config + submodules; non-zero if in
   return "$incomplete"
 }
 
+# .env keys needed to start the devcontainer, besides the read-only token.
+REBUILD_ENV_VARS="COMPOSE_PROJECT_NAME DEVCONTAINER_INGRESS_PORT"
+
+# report_env — show which required .env keys are set, at the end of install.
+# Security: wsctl never reads or logs .env contents — it only checks whether a key is set.
+report_env() {
+  local v all=1
+  info "  .env (values never shown):"
+  if env_is_set "$TOKEN_VAR"; then ok "  $TOKEN_VAR set"; else warn "  $TOKEN_VAR not set"; all=0; fi
+  for v in $REBUILD_ENV_VARS; do
+    if env_is_set "$v"; then ok "  $v set"; else warn "  $v not set"; all=0; fi
+  done
+  if [ "$all" -eq 1 ]; then
+    ok "  .env ready — Rebuild in Container to start."
+  else
+    info "  set the key(s) marked 'not set' in .env by hand, then Rebuild in Container."
+  fi
+}
+
+# cmd_install — lay config from templates, then clone and hide the managed submodules.
 cmd_install() {
   local force="" check="" a
   for a in "$@"; do case "$a" in
     --force) force="--force" ;;
     --check) check=1 ;;
-    --invisible) : ;;                                  # invisible is the only mode now (default) — flag kept as a harmless no-op
+    --invisible) : ;;                                  # invisible is the default mode; flag kept as a no-op for compatibility
     -h|--help) info "usage: wsctl install [--force] [--check]"; return 0 ;;
     *) die "install: unknown arg '$a'" 2 ;;
   esac; done
 
   [ -n "$check" ] && { install_check; return $?; }
 
-  # Visibility mode (WSCTL_MODE — the reserved seam). invisible is the ONLY supported mode; normal is PARKED.
-  # Checked FIRST, before any work, so an unsupported mode fails fast with just that message — nothing laid,
-  # no token read. That clean "not supported" message is the whole UX of choosing normal → known-issues.md.
+  # Only invisible mode is supported. Checked first so an unsupported mode fails before anything is changed.
   case "$WSCTL_MODE" in
     invisible) : ;;
-    normal)    die "normal mode is not supported in this build — it is parked. Unset WSCTL_MODE (it defaults to invisible). → known-issues.md" ;;
+    normal)    die "normal mode is not supported in this build — it is not available yet. Unset WSCTL_MODE (it defaults to invisible)." ;;
     *)         die "unknown WSCTL_MODE '$WSCTL_MODE' (supported: invisible)" 2 ;;
   esac
 
@@ -72,9 +92,10 @@ cmd_install() {
 
   echo >&2
   ok "onboarding ready — submodules in place (invisible)."
-  info "  next: set COMPOSE_PROJECT_NAME + DEVCONTAINER_INGRESS_PORT in .env, then Rebuild in Container."
+  report_env
 }
 
+# cmd_update — fast-forward each managed submodule (or just the one named) from its remote.
 cmd_update() {
   local only="" a
   for a in "$@"; do case "$a" in
@@ -96,7 +117,7 @@ cmd_update() {
   local rc=0 s br out
   for s in $subs; do
     [ -e "$ROOT/$s/.git" ] || { warn "$s: not cloned — run 'wsctl install'"; rc=1; continue; }
-    discard_dirty "$s"                                 # F7: platform-owned content; local edits are disposable
+    discard_dirty "$s"                                 # platform-owned content; local edits are disposable
     br="$(current_branch "$s")"
     [ "$br" = "(detached)" ] && { warn "$s: detached HEAD — checkout a branch first, then re-run"; rc=1; continue; }
     info "→ $s: pull $br"
@@ -111,6 +132,7 @@ cmd_update() {
   return $rc
 }
 
+# cmd_status — show each submodule's branch and uncommitted-file count (no network, no token).
 cmd_status() {
   info "submodule pins (git submodule status):"
   git -C "$ROOT" submodule status 2>/dev/null | sed 's/^/  /' >&2 || true
@@ -125,23 +147,22 @@ cmd_status() {
   done
 }
 
-cmd_health() {   # read-only diagnosis: report invisible-mode drift; non-zero if any. No network, no token.
+# cmd_health — run the read-only checks, showing each as ✓/⚠; non-zero if any failed (no network, no token).
+cmd_health() {
   local a; for a in "$@"; do case "$a" in
     -h|--help) info "usage: wsctl health"; return 0 ;;
     *) die "health: unknown arg '$a'" 2 ;;
   esac; done
   git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || die "$ROOT is not a git repository — run 'git init' (or clone) first"
 
-  local drift; drift="$(drift_enumerate)"
-  if [ -z "$drift" ]; then ok "healthy — both submodules present, on-branch, and hidden."; return 0; fi
-  warn "drift detected:"
-  printf '%s\n' "$drift" | while IFS=$'\t' read -r _ _ msg; do warn "  - $msg"; done
+  info "health — read-only checks (no network, no key):"
+  if health_report; then ok "healthy — all checks passed."; return 0; fi
   info "  run 'wsctl reinstall' to rebuild a clean environment."
   return 1
 }
 
-cmd_reinstall() {   # reset + install: tear down the submodules' local git-state, then re-provision a clean set.
-  # The explicit "give me a clean environment" verb — a thin composition of two built verbs, no repair logic of its own.
+# cmd_reinstall — run reset, then install, to rebuild a clean submodule set.
+cmd_reinstall() {
   local force="" a
   for a in "$@"; do case "$a" in
     --force) force="--force" ;;
@@ -154,7 +175,8 @@ cmd_reinstall() {   # reset + install: tear down the submodules' local git-state
   cmd_install ${force:+"$force"}
 }
 
-cmd_reset() {   # clean the submodules' local git-state so `install` can rebuild. Shared files untouched.
+# cmd_reset — remove the managed submodules' local checkouts so `install` can rebuild them; shared files untouched.
+cmd_reset() {
   local a s
   for a in "$@"; do case "$a" in
     -h|--help) info "usage: wsctl reset"; return 0 ;;
@@ -174,6 +196,7 @@ cmd_reset() {   # clean the submodules' local git-state so `install` can rebuild
   info "  shared files (.env / .mcp.json / .npmrc / docker-compose.client.yaml) were left untouched."
 }
 
+# main — parse global flags, pick the command, and run it.
 main() {
   local cmd="" args=()
   while [ $# -gt 0 ]; do
