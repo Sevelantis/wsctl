@@ -24,9 +24,9 @@ devcontainer itself).
 - **Fully scripted setup** — Bash automates the entire provisioning; you paste a single line.
 - **Invisible Mode** — the platform's repositories stay completely invisible in your project's remote, managed
   through local `.git` state (never surfaced — not even in `.gitignore`).
-- **Verb-driven interface** — `install`, `update`, `reset`, `reinstall`, `health`, and `configure`, with a
-  single `wsctl.toml` as the source of truth for workspace state.
-- **Docker hygiene** — `wsctl docker-clean` and `wsctl docker-audit` reclaim Docker build-cache before it fills
+- **Verb-driven interface** — `install`, `update`, `status`, `health`, `reinstall`, `reset`, and `docker`,
+  each doing one clear job.
+- **Docker hygiene** — `wsctl docker clean` and `wsctl docker audit` reclaim Docker build-cache before it fills
   the host disk.
 
 ### Roadmap

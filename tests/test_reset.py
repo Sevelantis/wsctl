@@ -1,10 +1,4 @@
-"""reset — clean the submodules' local git-state so `install` can rebuild (UC-7).
-
-The heavy inverse of provisioning: remove the two managed submodule folders + their internal git
-state + any staged pin + the invisible exclude, so a fresh `install` rebuilds from scratch. It must
-be surgical — NEVER touch the client's co-owned shared files (.env/.mcp.json/.npmrc/compose) — and
-idempotent. `reset` + `install` is also the basis of the `reinstall` verb (reset-then-install).
-"""
+"""reset — removes the managed submodules and their git state so `install` can rebuild, without touching shared files."""
 
 SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
@@ -20,7 +14,7 @@ def test_reset_removes_the_submodule_folders(client):
 
 
 def test_reset_removes_internal_git_modules(client):
-    """The usual breakage lives in .git/modules/<name> (stale state + leftover locks) — reset must clear it."""
+    """Stale state and locks live in .git/modules/<name>; reset must clear them."""
     assert client.wsctl("install").returncode == 0
     client.wsctl("reset")
     for sub in SUBMODULES:
@@ -28,7 +22,7 @@ def test_reset_removes_internal_git_modules(client):
 
 
 def test_reset_never_touches_shared_files(client):
-    """The firm boundary (UC-7): reset cleans platform git-state ONLY; the client's co-owned files are off-limits."""
+    """reset must remove only platform git state; the client's own files (.env, .mcp.json, ...) must stay."""
     assert client.wsctl("install").returncode == 0
     assert client.wsctl("reset").returncode == 0  # not vacuous: reset must have run
     for name in SHARED:

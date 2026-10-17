@@ -1,11 +1,4 @@
-"""visibility — invisible is the ONLY mode: install leaves ZERO submodule trace in the client's repo.
-
-Invisible mode keeps the two managed submodules as plain clones hidden by local `.git/info/exclude` —
-no committed pin, no `.gitmodules`, nothing stageable — which makes it immune to the whole F1–F6 class
-(→ visibility.md). This file is also the home of the invisible `install` base case (the normal-mode
-`test_install.py` is skipped). It asserts the on-disk submodule state AND the config half of install
-(templates laid), plus that the parked `WSCTL_MODE=normal` is rejected fast.
-"""
+"""visibility — invisible install leaves no submodule trace in the client's repo (no pin, no .gitmodules, hidden)."""
 
 from pathlib import Path
 
@@ -14,13 +7,19 @@ SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
 
 
+# --- helpers ---
+
+
 def _status_lines(client):
     out = client.git("status", "--porcelain").stdout.splitlines()
     return [ln.strip() for ln in out if ln.strip()]
 
 
+# --- invisible install: clone, hide, no trace ---
+
+
 def test_invisible_setup_clones_both_with_content(client):
-    """Invisible `setup` still delivers a working workspace: both submodules present, with content."""
+    """Install must still deliver a working workspace: both submodules cloned, with content."""
     r = client.wsctl("install", "--invisible")
     assert r.returncode == 0, r.stderr
     for sub in SUBMODULES:
@@ -28,8 +27,7 @@ def test_invisible_setup_clones_both_with_content(client):
 
 
 def test_invisible_leaves_no_committed_submodule_trace(client):
-    """The core invisible promise: no `.gitmodules`, and no gitlink staged in the index —
-    nothing about the submodules is tracked or pushable."""
+    """No `.gitmodules` and no staged submodule pointer; otherwise the submodules could be committed or pushed."""
     assert client.wsctl("install", "--invisible").returncode == 0  # not vacuous: setup must have run
     assert not (client.path / ".gitmodules").exists(), ".gitmodules was created — invisible mode must not register submodules"
     staged = client.git("ls-files", "--stage").stdout
@@ -37,8 +35,7 @@ def test_invisible_leaves_no_committed_submodule_trace(client):
 
 
 def test_invisible_submodules_are_hidden_from_git_status(client):
-    """The folders are hidden via `.git/info/exclude`, so `git status` never lists them —
-    the client can `git add .` freely and never scoop up a submodule."""
+    """`git status` must not list the submodules; otherwise `git add .` would sweep them into the client's commit."""
     assert client.wsctl("install", "--invisible").returncode == 0  # not vacuous: setup must have run
     lines = _status_lines(client)
     for sub in SUBMODULES:
@@ -46,7 +43,7 @@ def test_invisible_submodules_are_hidden_from_git_status(client):
 
 
 def test_invisible_writes_the_exclude_entries(client):
-    """The hiding mechanism itself: both submodule paths land in `.git/info/exclude`."""
+    """Both submodule paths must be written to `.git/info/exclude`, or nothing hides them."""
     client.wsctl("install", "--invisible")
     exclude = (client.path / ".git" / "info" / "exclude").read_text()
     for sub in SUBMODULES:
@@ -54,8 +51,7 @@ def test_invisible_writes_the_exclude_entries(client):
 
 
 def test_invisible_rerun_reapplies_the_exclude(client):
-    """Per-clone self-heal: `.git/info/exclude` never travels, so a fresh clone starts visible. Re-running
-    invisible `setup` must re-write the exclude — otherwise a re-cloned repo leaks the submodules forever."""
+    """`.git/info/exclude` is not cloned, so a re-run must rewrite it; otherwise a re-cloned repo shows the submodules."""
     assert client.wsctl("install", "--invisible").returncode == 0
     exclude = client.path / ".git" / "info" / "exclude"
     exclude.unlink()  # simulate a fresh clone: the exclude is gone
@@ -66,8 +62,7 @@ def test_invisible_rerun_reapplies_the_exclude(client):
 
 
 def test_invisible_update_keeps_zero_trace(client):
-    """`update` on an invisible workspace must stay invisible: it pulls the plain clones but must never
-    create a pin/.gitmodules or un-hide a folder. (The pull mechanic itself is proven-live separately.)"""
+    """`update` must not create a pointer or `.gitmodules`, or un-hide a folder, in an invisible workspace."""
     assert client.wsctl("install", "--invisible").returncode == 0
     assert client.wsctl("update").returncode == 0, "update failed in invisible mode"
     assert not (client.path / ".gitmodules").exists(), "update created .gitmodules — broke invisibility"
@@ -77,13 +72,11 @@ def test_invisible_update_keeps_zero_trace(client):
         assert not any(sub in ln for ln in lines), f"{sub} became visible after update\n{lines}"
 
 
-def test_install_lays_the_config_templates(client):
-    """install copies every templates/ blueprint to its correct destination.
+# --- install: config templates and mode guard ---
 
-    A template's path relative to templates/ is its destination under the project root, so a nested
-    blueprint lands nested rather than flattened to the root. In particular, the devcontainer's client
-    compose override must land in .devcontainer/, where the devcontainer looks for it — not at the
-    project root, where it would be silently ignored."""
+
+def test_install_lays_the_config_templates(client):
+    """Every template must land at its relative path; the compose override must go in .devcontainer/, not the root, or it is ignored."""
     tdir = ROOT / "templates"
     rels = sorted(p.relative_to(tdir).as_posix() for p in tdir.rglob("*") if p.is_file())
     assert rels, "no templates found to lay — fixture/tree problem"
@@ -98,12 +91,56 @@ def test_install_lays_the_config_templates(client):
 
 
 def test_install_rejects_the_unsupported_normal_mode(client):
-    """WSCTL_MODE=normal is PARKED: choosing it must fail FAST with a clear 'not supported' message and lay
-    NOTHING — that clean error is the whole UX of the parked seam (→ known-issues.md). Proves the wiring of
-    the reserved normal-mode seam without implementing it."""
+    """WSCTL_MODE=normal must fail immediately with a clear message and change nothing."""
     r = client.wsctl("install", extra_env={"WSCTL_MODE": "normal"})
     assert r.returncode != 0, "normal mode should be rejected, not run"
     assert "not supported" in r.stderr.lower() or "parked" in r.stderr.lower(), f"no clear unsupported message\n{r.stderr}"
-    # fast-fail: the guard runs before any work, so nothing is provisioned or laid
-    assert not (client.path / ".claude" / ".git").exists(), "normal mode cloned a submodule before failing — not fast-fail"
-    assert not (client.path / ".mcp.json").exists(), "normal mode laid config before failing — not fast-fail"
+    # the guard runs before any work, so nothing is provisioned or laid
+    assert not (client.path / ".claude" / ".git").exists(), "normal mode cloned a submodule before failing"
+    assert not (client.path / ".mcp.json").exists(), "normal mode laid config before failing"
+
+
+def test_invisible_hides_the_wsctl_launcher_dir(client):
+    """The `.wsctl/` launcher clone must be excluded too, or it shows up untracked in `git status`."""
+    assert client.wsctl("install").returncode == 0
+    exclude = (client.path / ".git" / "info" / "exclude").read_text()
+    assert "/.wsctl/" in exclude, "the launcher dir isn't excluded — .wsctl/ leaks into git status"
+    # confirm the exclude hides a real .wsctl/ directory
+    (client.path / ".wsctl").mkdir(exist_ok=True)
+    (client.path / ".wsctl" / "wsctl.sh").write_text("# launcher stand-in\n")
+    lines = _status_lines(client)
+    assert not any(".wsctl" in ln for ln in lines), f".wsctl/ shows in git status despite the exclude\n{lines}"
+
+
+# --- install: .env summary ---
+
+
+def test_install_never_prints_the_token_value(client):
+    """Security: the .env summary may report that the token key is set, but must never print its value."""
+    r = client.wsctl("install")
+    assert r.returncode == 0, r.stderr
+    combined = r.stdout + r.stderr
+    token_val = ""
+    for line in (client.path / ".env").read_text().splitlines():
+        if line.startswith("GH_TOKEN_RO_INFRA="):
+            token_val = line.split("=", 1)[1]
+    assert token_val, "fixture precondition: a token value must be set"
+    assert token_val not in combined, "install printed the token value — secrets must never be echoed"
+    assert "GH_TOKEN_RO_INFRA" in combined, "install didn't report the token key's presence"
+
+
+def test_install_flags_an_unset_rebuild_key(client):
+    """An unset required key (only the token is set here) must be named, or the user cannot tell what to fix before Rebuild."""
+    r = client.wsctl("install")
+    combined = r.stdout + r.stderr
+    assert "COMPOSE_PROJECT_NAME" in combined, "the summary didn't mention the required Rebuild key"
+    assert "not set" in combined.lower(), "an unset key wasn't flagged — the user can't tell what's missing"
+
+
+def test_install_does_not_nag_when_env_is_complete(client):
+    """With every required key set, the summary must not tell the user to set anything."""
+    env = client.path / ".env"
+    env.write_text(env.read_text() + "COMPOSE_PROJECT_NAME=demo\nDEVCONTAINER_INGRESS_PORT=8080\n")
+    r = client.wsctl("install")
+    combined = (r.stdout + r.stderr).lower()
+    assert "not set" not in combined, f"a key was flagged unset though all are present\n{combined}"

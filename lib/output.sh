@@ -1,4 +1,4 @@
-# output — stderr logging + TTY-aware colour. COLOR=1 force · 0 plain · auto (default).
+# output — stderr logging helpers with colour when attached to a terminal (COLOR=1 force · 0 plain · auto).
 COLOR="${COLOR:-auto}"
 [ "$COLOR" = auto ] && { [ -t 2 ] && COLOR=1 || COLOR=0; }
 if [ "$COLOR" = 0 ]; then C_RED=""; C_YEL=""; C_GRN=""; C_DIM=""; C_BLD=""; C_RST=""

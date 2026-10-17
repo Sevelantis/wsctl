@@ -1,10 +1,4 @@
-"""update — pull both managed submodules on their branch (the "stay current" verb).
-
-Completes the basic tool's core-verb coverage (setup ✓ · status ✓ · update here). Each test names
-the real client risk it guards. The pure fast-forward-of-new-commits mechanic is proven live and
-needs a moving-upstream fixture; here we cover the verb's own behavior — no-op pull, narrowing,
-F7 dirty-discard, detached-HEAD refusal, and the missing-token guard.
-"""
+"""update — pulls the managed submodules; covers narrowing, dirty-discard, detached HEAD, and the missing-token guard."""
 
 SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
@@ -33,8 +27,7 @@ def test_update_can_narrow_to_one_submodule(client):
 
 
 def test_update_discards_a_dirty_managed_submodule(client):
-    """F7: a managed submodule is platform-owned + read-only, so a local edit can only block the
-    client's own pull. update must auto-discard it (no prompt) and still succeed."""
+    """Local edits in a managed submodule would block the pull; update must discard them and still succeed."""
     _setup(client)
     f = client.path / ".claude" / DUMMY_FILE[".claude"]
     f.write_text("local junk that would block a pull\n")
@@ -53,7 +46,7 @@ def test_update_refuses_a_detached_submodule(client):
 
 
 def test_update_without_a_token_dies_clearly(client):
-    """The token guard: with no key in .env, update must stop with a plain message, not a cryptic git error."""
+    """Without a token, update must stop with a message naming the token variable, not a git error."""
     _setup(client)
     (client.path / ".env").write_text("# no token here\n")
     r = client.wsctl("update")

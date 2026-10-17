@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# wsctl — workspace control. Entrypoint: resolve own dir, source lib/, dispatch.
+# wsctl — entrypoint: finds its own directory, loads lib/*.sh, and runs the requested command.
 # Run from your project root:  bash .wsctl/wsctl.sh <setup|update|status>   (--help for usage)
 set -euo pipefail
 
-# --no-color pre-scan: must set COLOR before any lib defines colour vars.
+# Apply --no-color before output.sh defines the colour variables.
 for _a in "$@"; do [ "$_a" = "--no-color" ] && { COLOR=0; export COLOR; break; }; done
 
 ROOT="$PWD"; export ROOT                                                 # the client project root
