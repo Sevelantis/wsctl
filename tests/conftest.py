@@ -83,8 +83,9 @@ class Client:
         self.path = path
         self.env = env
 
-    def wsctl(self, *args, check=False):
-        return _run(["bash", str(WSCTL), *args], self.path, self.env, check=check)
+    def wsctl(self, *args, check=False, extra_env=None):
+        env = {**self.env, **extra_env} if extra_env else self.env
+        return _run(["bash", str(WSCTL), *args], self.path, env, check=check)
 
     def git(self, *args, check=True):
         return _run(["git", *args], self.path, self.env, check=check)

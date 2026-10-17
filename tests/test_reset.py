@@ -3,7 +3,7 @@
 The heavy inverse of provisioning: remove the two managed submodule folders + their internal git
 state + any staged pin + the invisible exclude, so a fresh `install` rebuilds from scratch. It must
 be surgical — NEVER touch the client's co-owned shared files (.env/.mcp.json/.npmrc/compose) — and
-idempotent. `reset` + `install` is also the basis of a future `doctor` (reset-then-install).
+idempotent. `reset` + `install` is also the basis of the `reinstall` verb (reset-then-install).
 """
 
 SUBMODULES = (".claude", "devcontainers")
@@ -42,7 +42,7 @@ def test_reset_is_idempotent_on_a_clean_repo(client):
 
 
 def test_reset_then_install_rebuilds(client):
-    """The whole point: reset + install is a clean re-provision (and the basis of doctor = reset+install)."""
+    """The whole point: reset + install is a clean re-provision (and the basis of the reinstall verb)."""
     assert client.wsctl("install").returncode == 0
     assert client.wsctl("reset").returncode == 0
     assert client.wsctl("install").returncode == 0, "install could not rebuild after reset"

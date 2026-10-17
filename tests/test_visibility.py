@@ -1,14 +1,15 @@
-"""visibility — invisible mode leaves ZERO submodule trace in the client's repo.
+"""visibility — invisible is the ONLY mode: install leaves ZERO submodule trace in the client's repo.
 
-Invisible mode (the design default; built opt-in first via `setup --invisible`) keeps the two
-managed submodules as plain clones hidden by local `.git/info/exclude` — no committed pin, no
-`.gitmodules`, nothing stageable. That structural absence is what makes invisible mode immune to
-the whole F1–F6 class (→ visibility.md). These tests assert the real on-disk state matches that
-promise exactly; the config files setup also lays are a separate concern and intentionally ignored.
+Invisible mode keeps the two managed submodules as plain clones hidden by local `.git/info/exclude` —
+no committed pin, no `.gitmodules`, nothing stageable — which makes it immune to the whole F1–F6 class
+(→ visibility.md). This file is also the home of the invisible `install` base case (the normal-mode
+`test_install.py` is skipped). It asserts the on-disk submodule state AND the config half of install
+(templates laid), plus that the parked `WSCTL_MODE=normal` is rejected fast.
 """
 
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]  # wsctl/
 SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
 
@@ -74,3 +75,27 @@ def test_invisible_update_keeps_zero_trace(client):
     lines = _status_lines(client)
     for sub in SUBMODULES:
         assert not any(sub in ln for ln in lines), f"{sub} became visible after update\n{lines}"
+
+
+def test_install_lays_the_config_templates(client):
+    """The config HALF of a working install (the other half of the submodule clone): `install` copies every
+    templates/ blueprint (.mcp.json, .npmrc, docker-compose.client.yaml) into the project root. A missing one
+    = a client that can't Rebuild. This is the ONLY assertion of config-laying now that test_install.py is
+    skipped — the coverage gap it leaves, closed."""
+    templates = sorted(p.name for p in (ROOT / "templates").iterdir() if p.is_file())
+    assert templates, "no templates found to lay — fixture/tree problem"
+    assert client.wsctl("install").returncode == 0
+    for name in templates:
+        assert (client.path / name).exists(), f"config template {name} was not laid by install"
+
+
+def test_install_rejects_the_unsupported_normal_mode(client):
+    """WSCTL_MODE=normal is PARKED: choosing it must fail FAST with a clear 'not supported' message and lay
+    NOTHING — that clean error is the whole UX of the parked seam (→ known-issues.md). Proves the wiring of
+    the reserved normal-mode seam without implementing it."""
+    r = client.wsctl("install", extra_env={"WSCTL_MODE": "normal"})
+    assert r.returncode != 0, "normal mode should be rejected, not run"
+    assert "not supported" in r.stderr.lower() or "parked" in r.stderr.lower(), f"no clear unsupported message\n{r.stderr}"
+    # fast-fail: the guard runs before any work, so nothing is provisioned or laid
+    assert not (client.path / ".claude" / ".git").exists(), "normal mode cloned a submodule before failing — not fast-fail"
+    assert not (client.path / ".mcp.json").exists(), "normal mode laid config before failing — not fast-fail"
