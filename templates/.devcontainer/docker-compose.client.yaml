@@ -21,9 +21,9 @@
 services:
 
   # --- workspace override: add volumes / env / build args; the platform owns the base definition ---
-  # workspace:
-  #   environment:
-  #     - EXAMPLE_FLAG=1
+  workspace:
+    environment:
+      - EXAMPLE_FLAG=1
 
   # --- example1 — an internal TCP service (DB/cache/queue): reached as `example1:<PORT>`, no host URL ---
   # example1:
