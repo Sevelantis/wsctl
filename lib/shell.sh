@@ -9,13 +9,39 @@
 ALIAS_BEGIN="# wsctl-alias-begin"
 ALIAS_END="# wsctl-alias-end"
 
-# shell_rc_file — print the startup file for the user's shell, or fail if it is neither zsh nor bash.
-shell_rc_file() {
+# shell_rc_for <zsh|bash> — the startup file for that shell. zsh honours ZDOTDIR (common in managed setups);
+# bash uses HOME.
+shell_rc_for() {
+  case "$1" in
+    zsh)  printf '%s/.zshrc'  "${ZDOTDIR:-$HOME}" ;;
+    bash) printf '%s/.bashrc' "$HOME" ;;
+  esac
+}
+
+# shell_default_rc — the rc for the user's $SHELL, or fail if $SHELL is neither zsh nor bash.
+shell_default_rc() {
   case "${SHELL:-}" in
-    */zsh)  printf '%s/.zshrc'  "$HOME" ;;
-    */bash) printf '%s/.bashrc' "$HOME" ;;
+    */zsh)  shell_rc_for zsh ;;
+    */bash) shell_rc_for bash ;;
     *)      return 1 ;;
   esac
+}
+
+# shell_rc_targets — the rc files to wire the command into, one per line, de-duplicated: the $SHELL rc, PLUS any
+# supported rc that already exists. The second part matters because the login shell ($SHELL) and the shell you
+# actually type in can differ — writing only the $SHELL rc then leaves `wsctl` undefined in the shell you use.
+# Fails (prints nothing) when $SHELL is unsupported and no supported rc exists.
+shell_rc_targets() {
+  local out="" def sh rc
+  def="$(shell_default_rc 2>/dev/null || true)"
+  [ -n "$def" ] && out="$def"
+  for sh in zsh bash; do
+    rc="$(shell_rc_for "$sh")"
+    [ -f "$rc" ] || continue
+    case " $out " in *" $rc "*) ;; *) out="${out:+$out }$rc" ;; esac
+  done
+  [ -n "$out" ] || return 1
+  printf '%s\n' $out
 }
 
 # shell_alias_block — the exact text written into the rc: the marker fence around the locator function.
@@ -51,43 +77,50 @@ shell_strip_block() {
   rm -f "$tmp" 2>/dev/null; return 1
 }
 
-# shell_wire_alias — add or refresh the `wsctl` command in the user's rc. Each outcome gets its own message.
+# shell_wire_alias — add or refresh the `wsctl` command in every target rc (see shell_rc_targets). Writing to one
+# rc never blocks the others, and a shell we cannot write to is never fatal — the user can still run the tool by
+# path. Each outcome gets its own message.
 shell_wire_alias() {
-  local rc had=0
-  if ! rc="$(shell_rc_file)"; then
-    warn "wsctl command not set up, because your shell is neither zsh nor bash — run it as: bash .wsctl/wsctl.sh <command>"
+  local targets rc had wrote="" refreshed="" any=0
+  if ! targets="$(shell_rc_targets)"; then
+    warn "wsctl command not set up, because your shell is neither zsh nor bash (and no ~/.zshrc or ~/.bashrc exists) — run it as: bash .wsctl/wsctl.sh <command>"
     return 0
   fi
-  if [ ! -e "$rc" ] && ! : > "$rc" 2>/dev/null; then
-    warn "wsctl command not set up, because $rc could not be created — run it as: bash .wsctl/wsctl.sh <command>"
-    return 0
-  fi
-  if [ ! -w "$rc" ]; then
-    warn "wsctl command not set up, because $rc is not writable — run it as: bash .wsctl/wsctl.sh <command>"
-    return 0
-  fi
-  grep -qF "$ALIAS_BEGIN" "$rc" 2>/dev/null && had=1
-  if ! shell_strip_block "$rc"; then
-    warn "wsctl command not set up, because $rc could not be updated — run it as: bash .wsctl/wsctl.sh <command>"
-    return 0
-  fi
-  shell_alias_block >> "$rc"
-  if [ "$had" -eq 1 ]; then
-    info "wsctl command already set up in $rc (refreshed)."
-  else
-    ok "wsctl command added to $rc — open a new terminal, or run: source $rc"
-  fi
+  while IFS= read -r rc; do
+    [ -n "$rc" ] || continue
+    if [ ! -e "$rc" ] && ! : > "$rc" 2>/dev/null; then
+      warn "wsctl command not set up in $rc, because it could not be created"; continue
+    fi
+    if [ ! -w "$rc" ]; then
+      warn "wsctl command not set up in $rc, because it is not writable"; continue
+    fi
+    had=0; grep -qF "$ALIAS_BEGIN" "$rc" 2>/dev/null && had=1
+    if ! shell_strip_block "$rc"; then
+      warn "wsctl command not set up in $rc, because it could not be updated"; continue
+    fi
+    shell_alias_block >> "$rc"; any=1
+    if [ "$had" -eq 1 ]; then refreshed="${refreshed:+$refreshed }$rc"; else wrote="${wrote:+$wrote }$rc"; fi
+  done <<EOF
+$targets
+EOF
+  [ -n "$wrote" ]     && ok   "wsctl command added to:$wrote — open a new terminal, or source that file."
+  [ -n "$refreshed" ] && info "wsctl command refreshed in:$refreshed"
+  [ "$any" -eq 1 ]    || warn "wsctl command not set up anywhere — run it as: bash .wsctl/wsctl.sh <command>"
+  return 0
 }
 
-# shell_unwire_alias — remove the `wsctl` command from the user's rc (used by reset). No-op if we never wrote it.
+# shell_unwire_alias — remove the `wsctl` command from every supported rc that holds it (used by reset). It
+# scans both shells, not just $SHELL, so the block is cleaned up wherever install may have written it. No-op if
+# we never wrote it anywhere.
 shell_unwire_alias() {
-  local rc
-  rc="$(shell_rc_file)" || return 0
-  [ -f "$rc" ] || return 0
-  grep -qF "$ALIAS_BEGIN" "$rc" 2>/dev/null || return 0
-  if [ ! -w "$rc" ]; then
-    warn "wsctl command left in $rc — it is not writable to remove."
-    return 0
-  fi
-  if shell_strip_block "$rc"; then ok "wsctl command removed from $rc."; else warn "wsctl command could not be removed from $rc."; fi
+  local sh rc removed=""
+  for sh in zsh bash; do
+    rc="$(shell_rc_for "$sh")"
+    [ -f "$rc" ] || continue
+    grep -qF "$ALIAS_BEGIN" "$rc" 2>/dev/null || continue
+    if [ ! -w "$rc" ]; then warn "wsctl command left in $rc — it is not writable to remove."; continue; fi
+    if shell_strip_block "$rc"; then removed="${removed:+$removed }$rc"; else warn "wsctl command could not be removed from $rc."; fi
+  done
+  [ -n "$removed" ] && ok "wsctl command removed from:$removed"
+  return 0
 }
