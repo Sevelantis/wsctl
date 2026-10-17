@@ -28,17 +28,20 @@ url_for() {
   esac
 }
 
-# provision_config [--force] — lay client config from templates/ into the project root. Idempotent:
-# never clobbers an existing file unless --force. Picks up whatever lives in templates/ (incl. dotfiles).
+# provision_config [--force] — lay client config from templates/ into the project. Idempotent:
+# never clobbers an existing file unless --force. A template's path RELATIVE to templates/ IS its
+# destination under $ROOT, so a nested blueprint lands in the right place:
+#   templates/.mcp.json                            → $ROOT/.mcp.json
+#   templates/.devcontainer/docker-compose.client.yaml → $ROOT/.devcontainer/docker-compose.client.yaml
+# (find -type f picks up dotfiles + nested dirs; parent dirs are created as needed.)
 provision_config() {
-  local force="${1:-}" t name dest laid=0
-  shopt -s nullglob dotglob
-  for t in "$WSCTL_HOME"/templates/*; do
-    [ -f "$t" ] || continue                       # only regular files are config blueprints — skip stray dirs/caches
-    name="$(basename -- "$t")"; dest="$ROOT/$name"
-    if [ -e "$dest" ] && [ "$force" != "--force" ]; then log "  config: $name present (keep)"; continue; fi
-    cp -- "$t" "$dest"; ok "  config: $name"; laid=$((laid + 1))
-  done
-  shopt -u nullglob dotglob
+  local force="${1:-}" t rel dest laid=0
+  while IFS= read -r t; do
+    rel="${t#"$WSCTL_HOME"/templates/}"           # path relative to templates/ = destination relative to $ROOT
+    dest="$ROOT/$rel"
+    if [ -e "$dest" ] && [ "$force" != "--force" ]; then log "  config: $rel present (keep)"; continue; fi
+    mkdir -p -- "$(dirname -- "$dest")"
+    cp -- "$t" "$dest"; ok "  config: $rel"; laid=$((laid + 1))
+  done < <(find "$WSCTL_HOME/templates" -type f)
   [ "$laid" -gt 0 ] || log "  config: all present"
 }

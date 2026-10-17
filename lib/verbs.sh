@@ -26,14 +26,12 @@ EOF
 }
 
 install_check() {   # report present/missing config + submodules; non-zero if incomplete
-  local incomplete=0 s name t
+  local incomplete=0 s rel t
   info "config:"
-  shopt -s nullglob dotglob
-  for t in "$WSCTL_HOME"/templates/*; do
-    name="$(basename -- "$t")"
-    if [ -e "$ROOT/$name" ]; then ok "  $name"; else warn "  $name missing"; incomplete=1; fi
-  done
-  shopt -u nullglob dotglob
+  while IFS= read -r t; do
+    rel="${t#"$WSCTL_HOME"/templates/}"           # relative path = its destination under $ROOT (mirrors provision_config)
+    if [ -e "$ROOT/$rel" ]; then ok "  $rel"; else warn "  $rel missing"; incomplete=1; fi
+  done < <(find "$WSCTL_HOME/templates" -type f)
   info "submodules:"
   for s in $SUBMODULES; do
     if [ -e "$ROOT/$s/.git" ]; then ok "  $s on $(current_branch "$s")"; else warn "  $s not cloned"; incomplete=1; fi
