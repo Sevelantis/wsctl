@@ -78,25 +78,23 @@ def test_invisible_update_keeps_zero_trace(client):
 
 
 def test_install_lays_the_config_templates(client):
-    """The config HALF of a working install (the other half of the submodule clone): `install` copies every
-    templates/ blueprint to its correct destination. A template's path RELATIVE to templates/ IS its
-    destination under the project root — so a nested blueprint must land nested, not flattened to root.
-    This is the ONLY assertion of config-laying now that test_install.py is skipped.
+    """install copies every templates/ blueprint to its correct destination.
 
-    Guards F8 (2026-10-17): docker-compose.client.yaml was laid at the project ROOT instead of
-    .devcontainer/, because the old copy flattened every template to basename-at-root. The devcontainer
-    can't find its client compose override at the wrong path → a client that can't Rebuild correctly."""
+    A template's path relative to templates/ is its destination under the project root, so a nested
+    blueprint lands nested rather than flattened to the root. In particular, the devcontainer's client
+    compose override must land in .devcontainer/, where the devcontainer looks for it — not at the
+    project root, where it would be silently ignored."""
     tdir = ROOT / "templates"
     rels = sorted(p.relative_to(tdir).as_posix() for p in tdir.rglob("*") if p.is_file())
     assert rels, "no templates found to lay — fixture/tree problem"
     assert client.wsctl("install").returncode == 0
     for rel in rels:
         assert (client.path / rel).exists(), f"config template {rel} was not laid at its correct relative path by install"
-    # F8 regression: the compose override must be nested under .devcontainer/, never flattened to root.
+    # the compose override belongs under .devcontainer/, never flattened to the project root
     assert (client.path / ".devcontainer" / "docker-compose.client.yaml").exists(), \
         "docker-compose.client.yaml missing from .devcontainer/ — the devcontainer can't find its client override"
     assert not (client.path / "docker-compose.client.yaml").exists(), \
-        "docker-compose.client.yaml was laid at the project root (F8) — it belongs in .devcontainer/"
+        "docker-compose.client.yaml was laid at the project root — it belongs in .devcontainer/"
 
 
 def test_install_rejects_the_unsupported_normal_mode(client):

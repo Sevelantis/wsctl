@@ -13,7 +13,7 @@ import shutil
 
 SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
-SHARED = (".mcp.json", ".npmrc", ".devcontainer/docker-compose.client.yaml", ".env")  # compose lives under .devcontainer/ (F8)
+SHARED = (".mcp.json", ".npmrc", ".devcontainer/docker-compose.client.yaml", ".env")  # compose lives under .devcontainer/
 TOKEN_VAR = "GH_TOKEN_RO_INFRA"
 
 
