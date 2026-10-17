@@ -10,6 +10,6 @@ ROOT="$PWD"; export ROOT                                                 # the c
 WSCTL_HOME="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"; export WSCTL_HOME
 
 # shellcheck source=/dev/null
-for _m in output token config git visibility verbs; do . "$WSCTL_HOME/lib/$_m.sh"; done
+for _m in output token config git visibility drift docker verbs; do . "$WSCTL_HOME/lib/$_m.sh"; done
 
 main "$@"

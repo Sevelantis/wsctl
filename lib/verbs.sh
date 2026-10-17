@@ -1,4 +1,4 @@
-# verbs — install · update · status · reset, plus arg dispatch. (doctor = reset+install, deferred.)
+# verbs — install · update · status · health · reinstall · reset, plus arg dispatch.
 
 usage() { cat <<'EOF'
 wsctl — workspace control
@@ -9,17 +9,19 @@ USAGE
   wsctl <command> [options]
 
 COMMANDS
-  install   Lay config from templates, capture the token, clone both submodules. Idempotent. [--invisible]
+  install   Lay config from templates, capture the token, clone both submodules (hidden). Idempotent.
   update    Pull both submodules' current branch (git pull --ff-only). [submodule] optional.
   status    Read-only: each submodule's branch + dirty state. No network, no token.
+  health    Read-only: report drift (missing / detached / un-hidden submodules). No network, no token.
+  reinstall Reset then install — rebuild a clean submodule set. Needs the token. Never touches shared files.
   reset     Clean the submodules' local git-state so 'install' can rebuild. Never touches shared files.
+  docker    Host Docker hygiene: 'wsctl docker audit|clean' (wraps docker-health). Run on the host.
 
 OPTIONS
   -h, --help      Show this help
       --no-color  Plain output (auto when piped)
   install --force     Overwrite scaffolded config from templates
   install --check     Report present/missing config + submodules; non-zero if incomplete
-  install --invisible Hide the submodules (plain clones + .git/info/exclude; no pin, no .gitmodules)
 EOF
 }
 
@@ -40,16 +42,25 @@ install_check() {   # report present/missing config + submodules; non-zero if in
 }
 
 cmd_install() {
-  local force="" check="" invisible="" a
+  local force="" check="" a
   for a in "$@"; do case "$a" in
     --force) force="--force" ;;
     --check) check=1 ;;
-    --invisible) invisible=1 ;;
-    -h|--help) info "usage: wsctl install [--force] [--check] [--invisible]"; return 0 ;;
+    --invisible) : ;;                                  # invisible is the only mode now (default) — flag kept as a harmless no-op
+    -h|--help) info "usage: wsctl install [--force] [--check]"; return 0 ;;
     *) die "install: unknown arg '$a'" 2 ;;
   esac; done
 
   [ -n "$check" ] && { install_check; return $?; }
+
+  # Visibility mode (WSCTL_MODE — the reserved seam). invisible is the ONLY supported mode; normal is PARKED.
+  # Checked FIRST, before any work, so an unsupported mode fails fast with just that message — nothing laid,
+  # no token read. That clean "not supported" message is the whole UX of choosing normal → known-issues.md.
+  case "$WSCTL_MODE" in
+    invisible) : ;;
+    normal)    die "normal mode is not supported in this build — it is parked. Unset WSCTL_MODE (it defaults to invisible). → known-issues.md" ;;
+    *)         die "unknown WSCTL_MODE '$WSCTL_MODE' (supported: invisible)" 2 ;;
+  esac
 
   provision_config "$force"
 
@@ -57,60 +68,12 @@ cmd_install() {
   require_git_version
 
   local tok; tok="$(read_token)"
-  if [ -z "$tok" ]; then
-    printf 'Paste your READ-ONLY GitHub token (%s) — input hidden: ' "$TOKEN_VAR" >&2
-    read -rs tok; echo >&2
-    [ -n "$tok" ] || die "no token entered"
-    persist_token "$tok"; ok "token saved to .env (0600)"
-  else
-    log "$TOKEN_VAR already set in .env"
-  fi
+  [ -n "$tok" ] || die "$TOKEN_VAR is not set in $ROOT/.env — add your read-only token by hand, then re-run."
 
-  # Invisible mode (opt-in for now): plain clones hidden via .git/info/exclude — no pin, no .gitmodules.
-  if [ -n "$invisible" ]; then
-    provision_invisible "$tok" || die "install incomplete — a submodule could not be set up (see ⚠ above)"
-    echo >&2
-    ok "onboarding ready — submodules in place (invisible)."
-    info "  next: set COMPOSE_PROJECT_NAME + DEVCONTAINER_INGRESS_PORT in .env, then Rebuild in Container."
-    return 0
-  fi
-
-  local rc=0 s out
-  info "→ ensuring submodules …"
-  for s in $SUBMODULES; do
-    set_ignore_local "$s"                              # every run — where the prompt reads it (F3)
-    if [ -e "$ROOT/$s/.git" ]; then
-      discard_dirty "$s"; ensure_on_branch "$s"; unstage_pin "$s"
-      log "  $s: present — on $(current_branch "$s") (use 'wsctl update' to pull)"
-      continue
-    fi
-    if submodule_registered "$s"; then
-      # Pre-declared by the repo template (or a half-registered prior run): the bookmark already exists.
-      # NEVER re-`add` it — that moves+stages the pin and blocks the client's own `git pull` (F2).
-      clean_broken_checkout "$s"
-      if out="$(git_ro "$tok" -C "$ROOT" submodule update --init --remote -- "$s" 2>&1)"; then
-        set_ignore_local "$s"; ensure_on_branch "$s"; unstage_pin "$s"
-        ok "  $s: initialized (on $(current_branch "$s"))"
-      else
-        printf '%s\n' "$out" | sed 's/^/      /' >&2
-        warn "  $s: init FAILED — check $TOKEN_VAR has Contents:Read on $(url_for "$s")"; rc=1
-      fi
-    else
-      # Truly absent — never declared. The ONE intended time we set the pin (the bookmark's birth).
-      if out="$(git_ro "$tok" -C "$ROOT" submodule add "$(url_for "$s")" "$s" 2>&1)"; then
-        git config -f "$ROOT/.gitmodules" "submodule.$s.ignore" all >/dev/null 2>&1 || true
-        set_ignore_local "$s"; ensure_on_branch "$s"
-        ok "  $s: added (on $(current_branch "$s"))"
-      else
-        printf '%s\n' "$out" | sed 's/^/      /' >&2
-        warn "  $s: add FAILED — check $TOKEN_VAR has Contents:Read on $(url_for "$s")"; rc=1
-      fi
-    fi
-  done
+  provision_invisible "$tok" || die "install incomplete — a submodule could not be set up (see ⚠ above)"
 
   echo >&2
-  [ "$rc" = 0 ] || die "install incomplete — a submodule could not be set up (see ⚠ above)"
-  ok "onboarding ready — submodules in place."
+  ok "onboarding ready — submodules in place (invisible)."
   info "  next: set COMPOSE_PROJECT_NAME + DEVCONTAINER_INGRESS_PORT in .env, then Rebuild in Container."
 }
 
@@ -164,6 +127,35 @@ cmd_status() {
   done
 }
 
+cmd_health() {   # read-only diagnosis: report invisible-mode drift; non-zero if any. No network, no token.
+  local a; for a in "$@"; do case "$a" in
+    -h|--help) info "usage: wsctl health"; return 0 ;;
+    *) die "health: unknown arg '$a'" 2 ;;
+  esac; done
+  git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1 || die "$ROOT is not a git repository — run 'git init' (or clone) first"
+
+  local drift; drift="$(drift_enumerate)"
+  if [ -z "$drift" ]; then ok "healthy — both submodules present, on-branch, and hidden."; return 0; fi
+  warn "drift detected:"
+  printf '%s\n' "$drift" | while IFS=$'\t' read -r _ _ msg; do warn "  - $msg"; done
+  info "  run 'wsctl reinstall' to rebuild a clean environment."
+  return 1
+}
+
+cmd_reinstall() {   # reset + install: tear down the submodules' local git-state, then re-provision a clean set.
+  # The explicit "give me a clean environment" verb — a thin composition of two built verbs, no repair logic of its own.
+  local force="" a
+  for a in "$@"; do case "$a" in
+    --force) force="--force" ;;
+    -h|--help) info "usage: wsctl reinstall [--force]"; return 0 ;;
+    *) die "reinstall: unknown arg '$a'" 2 ;;
+  esac; done
+  info "→ reinstall: reset, then install …"
+  cmd_reset
+  echo >&2
+  cmd_install ${force:+"$force"}
+}
+
 cmd_reset() {   # clean the submodules' local git-state so `install` can rebuild. Shared files untouched.
   local a s
   for a in "$@"; do case "$a" in
@@ -199,7 +191,10 @@ main() {
     install) cmd_install ${args[@]+"${args[@]}"} ;;
     update)  cmd_update  ${args[@]+"${args[@]}"} ;;
     status)  cmd_status  ${args[@]+"${args[@]}"} ;;
-    reset)   cmd_reset   ${args[@]+"${args[@]}"} ;;
+    health)    cmd_health    ${args[@]+"${args[@]}"} ;;
+    reinstall) cmd_reinstall ${args[@]+"${args[@]}"} ;;
+    reset)     cmd_reset     ${args[@]+"${args[@]}"} ;;
+    docker)    cmd_docker    ${args[@]+"${args[@]}"} ;;
     *)      die "unknown command '$cmd' (try: wsctl --help)" 2 ;;
   esac
 }

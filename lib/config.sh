@@ -6,6 +6,12 @@ TOKEN_VAR="GH_TOKEN_RO_INFRA"            # the read-only key, read from .env at 
 GH_MATCH="https://github.com/"           # URL-scope for the token header (never bare — only github.com sees it)
 GIT_MIN="2.31"                           # GIT_CONFIG_COUNT support floor
 
+# Submodule visibility mode (the one knob). invisible = SUPPORTED: plain clones hidden via
+# .git/info/exclude (no pin, no .gitmodules — immune to the whole F1–F6 class). normal (committed
+# pins + .gitmodules) is PARKED/unsupported since 2026-10-15 — kept only as a reserved seam so it can
+# return without re-deriving the design. Why + how-to-revive → known-issues.md.
+WSCTL_MODE="${WSCTL_MODE:-invisible}"     # invisible (supported) | normal (parked)
+
 valid_submodule() { local x; for x in $SUBMODULES; do [ "$x" = "$1" ] && return 0; done; return 1; }
 
 # url_for <name> — the clone URL. WSCTL_REMOTE_BASE redirects to local bare repos for offline tests

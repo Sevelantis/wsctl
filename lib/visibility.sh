@@ -15,6 +15,15 @@ vis_apply_exclude() {
   { printf '%s\n' "$EXCLUDE_BEGIN"; for s in $SUBMODULES; do printf '/%s/\n' "$s"; done; printf '%s\n' "$EXCLUDE_END"; } >> "$f"
 }
 
+# vis_exclude_applied — true when .git/info/exclude carries wsctl's entry for EVERY managed submodule
+# (what `health` reads to know the submodules are still hidden). Read-only.
+vis_exclude_applied() {
+  local f="$ROOT/.git/info/exclude" s
+  [ -f "$f" ] || return 1
+  for s in $SUBMODULES; do grep -qxF "/$s/" "$f" 2>/dev/null || return 1; done
+  return 0
+}
+
 # vis_remove_exclude — strip wsctl's fenced block from .git/info/exclude (used by `reset`, so a fresh
 # `install` re-applies it clean). Idempotent: a no-op when the block/file is absent.
 vis_remove_exclude() {
@@ -43,3 +52,10 @@ provision_invisible() {
   vis_apply_exclude                                       # hide them from the parent (per-clone, zero committed trace)
   return $rc
 }
+
+# provision_normal — PARKED (stopped 2026-10-15 to unblock development; may return). Normal mode = standard
+# committed submodules (pins + .gitmodules + submodule.<name>.ignore=all). It was cut because it carries the
+# entire F1–F6 bug class that invisible mode is structurally immune to (→ known-issues.md). This stub is the
+# reserved seam: to revive, implement the submodule add/update + set_ignore_local path here (the helpers still
+# live in lib/git.sh) and wire the `normal` arm of WSCTL_MODE in cmd_install.
+# provision_normal() { ... }   # intentionally not implemented

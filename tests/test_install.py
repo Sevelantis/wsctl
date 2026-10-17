@@ -9,6 +9,16 @@ is the 1:1 promise that a client's first paste lands identically (→ testing.md
 
 from pathlib import Path
 
+import pytest
+
+# PARKED 2026-10-15 — normal mode (committed pin + .gitmodules + ignore=all) was cut to unblock
+# development (invisible is now the only supported mode). This whole file proved the NORMAL-mode
+# install base case (`submodule add` = the bookmark's birth); the invisible base case lives in
+# test_visibility.py. Kept — not deleted — so it revives with normal mode. → known-issues.md.
+# (Coverage note: config-laying — the only mode-agnostic check here — is now asserted for invisible mode in
+#  test_visibility.py::test_install_lays_the_config_templates, so skipping this file leaves no coverage gap.)
+pytestmark = pytest.mark.skip(reason="normal mode parked 2026-10-15 — invisible-only (→ known-issues.md)")
+
 ROOT = Path(__file__).resolve().parents[1]  # wsctl/
 SUBMODULES = (".claude", "devcontainers")
 DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
