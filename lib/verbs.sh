@@ -17,13 +17,35 @@ COMMANDS
   reinstall Reset then install — rebuild a clean submodule set. Needs the token. Never touches shared files.
   reset     Clean the submodules' local git-state so 'install' can rebuild. Never touches shared files.
   docker    Host Docker hygiene: 'wsctl docker audit|clean' (wraps docker-health). Run on the host.
+  version   Print the tool version (and the workspace's config schema, if set).
 
 OPTIONS
   -h, --help      Show this help
+  -V, --version   Print the tool version and exit
+  -v, --verbose   Show the plumbing (resolved paths, git commands); never prints a secret
       --no-color  Plain output (auto when piped)
   install --force     Overwrite scaffolded config from templates
   install --check     Report present/missing config + submodules; non-zero if incomplete
 EOF
+}
+
+# cmd_version — print the tool version (data → stdout), plus the workspace config schema when wsctl.toml sets it.
+# The tool version ships with the clone in the VERSION file; the schema is a separate, workspace-owned value.
+cmd_version() {
+  local a; for a in "$@"; do case "$a" in
+    -h|--help) info "usage: wsctl version"; return 0 ;;
+    *) die "version: unknown arg '$a'" 2 ;;
+  esac; done
+  local ver="" line toml schema
+  [ -f "$WSCTL_HOME/VERSION" ] && ver="$(tr -d ' \t\n' < "$WSCTL_HOME/VERSION" 2>/dev/null || true)"
+  [ -n "$ver" ] || ver="unknown"      # a clone always ships VERSION; stay quiet and honest if it's ever absent
+  line="wsctl $ver"
+  toml="$ROOT/$WSCTL_DIR/wsctl.toml"
+  if [ -f "$toml" ]; then
+    schema="$(awk -F= '/^[[:space:]]*schema[[:space:]]*=/{gsub(/[" \t\r]/,"",$2); print $2; exit}' "$toml" 2>/dev/null || true)"
+    [ -n "$schema" ] && line="$line · workspace schema $schema"
+  fi
+  printf '%s\n' "$line"
 }
 
 # install_check — report which config files and submodules are present; non-zero if any is missing.
@@ -202,11 +224,20 @@ cmd_reset() {
 main() {
   local cmd="" args=()
   while [ $# -gt 0 ]; do
-    case "$1" in
-      --no-color) : ;;                                 # handled before sourcing output.sh
-      -h|--help)  if [ -z "$cmd" ]; then usage; exit 0; else args+=("$1"); fi ;;
-      *)          if [ -z "$cmd" ]; then cmd="$1"; else args+=("$1"); fi ;;
-    esac
+    if [ -z "$cmd" ]; then
+      case "$1" in                                     # before the command: wsctl's own global flags
+        --no-color)   : ;;                             # handled before sourcing output.sh
+        -v|--verbose) : ;;                             # consumed in the pre-scan
+        -V|--version) cmd="version" ;;
+        -h|--help)    usage; exit 0 ;;
+        *)            cmd="$1" ;;
+      esac
+    else
+      case "$1" in                                     # after the command: the command's own args, verbatim
+        --no-color) : ;;                               # the one exception — wsctl's colour flag, never forwarded
+        *)          args+=("$1") ;;
+      esac
+    fi
     shift
   done
   [ -n "$cmd" ] || { usage >&2; exit 2; }              # usage-on-error → stderr; explicit --help → stdout
@@ -218,6 +249,7 @@ main() {
     reinstall) cmd_reinstall ${args[@]+"${args[@]}"} ;;
     reset)     cmd_reset     ${args[@]+"${args[@]}"} ;;
     docker)    cmd_docker    ${args[@]+"${args[@]}"} ;;
+    version)   cmd_version   ${args[@]+"${args[@]}"} ;;
     *)      die "unknown command '$cmd' (try: wsctl --help)" 2 ;;
   esac
 }

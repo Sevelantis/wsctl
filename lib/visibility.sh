@@ -42,7 +42,11 @@ provision_invisible() {
     if [ -e "$ROOT/$s/.git" ]; then
       discard_dirty "$s"; ensure_on_branch "$s"          # float on the checked-out branch; re-run safe
       log "  $s: present — on $(current_branch "$s") (float)"
-    elif out="$(git_ro "$tok" -C "$ROOT" clone --quiet --branch "$DEFAULT_BRANCH" "$(url_for "$s")" "$s" 2>&1)"; then
+      continue
+    fi
+    info "  → cloning $s …"                               # narrate the slow step so it never looks hung
+    debug "clone $(url_for "$s") → $ROOT/$s (branch $DEFAULT_BRANCH)"   # the command, minus the token (injected via env)
+    if out="$(git_ro "$tok" -C "$ROOT" clone --quiet --branch "$DEFAULT_BRANCH" "$(url_for "$s")" "$s" 2>&1)"; then
       ensure_on_branch "$s"
       ok "  $s: cloned (on $(current_branch "$s"))"
     else
