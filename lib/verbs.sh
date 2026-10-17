@@ -92,6 +92,7 @@ cmd_install() {
 
   echo >&2
   ok "onboarding ready — submodules in place (invisible)."
+  shell_wire_alias
   report_env
 }
 
@@ -191,6 +192,7 @@ cmd_reset() {
     ok "  $s: cleaned"
   done
   vis_remove_exclude                                   # strip the invisible hiding block so install re-applies fresh
+  shell_unwire_alias                                   # take the wsctl command back out of the user's shell rc
   echo >&2
   ok "reset done — run 'wsctl install' to rebuild."
   info "  shared files (.env / .mcp.json / .npmrc / docker-compose.client.yaml) were left untouched."
