@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/wsctl-logo.svg" alt="wsctl" width="420">
+<img width="1916" height="821" alt="image" src="https://github.com/user-attachments/assets/47621d69-fc98-4d2c-83a3-49761feaf05a" />
 
 **One command stands up a complete, sandboxed AI devcontainer — in any project, on any OS.**
 
