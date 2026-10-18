@@ -63,21 +63,22 @@ discard_dirty() {
   local s="$1"; valid_submodule "$s" || return 0
   [ -e "$ROOT/$s/.git" ] || return 0
   [ -n "$(git -C "$ROOT/$s" status --porcelain 2>/dev/null)" ] || return 0
-  warn "  $s: discarding local changes (read-only, platform-owned)"
+  debug "discarding local edits in $s (read-only, platform-owned)"   # housekeeping, shown only under -v
   git -C "$ROOT/$s" reset -q --hard
   git -C "$ROOT/$s" clean -qfd
 }
 
-# diagnose_pull <name> <git-output> — print a clear reason for a failed pull (auth, diverged, or dirty).
+# diagnose_pull <name> <git-output> — add one caution naming the reason a pull failed (auth, diverged, or dirty).
+# The failing git command's own output is shown just above this, so these stay short.
 diagnose_pull() {
   local s="$1" out="$2"
   case "$out" in
     *"could not read Username"*|*"Authentication failed"*|*"terminal prompts disabled"*|*"403"*)
-      warn "$s: AUTH failed — $TOKEN_VAR is missing/expired/under-scoped (needs Contents:Read on $s), or (in-container) the gateway stripped the auth header." ;;
+      item warn "<path>$s</> auth failed — <path>$TOKEN_VAR</> is missing, expired, or under-scoped" ;;
     *"non-fast-forward"*|*"Not possible to fast-forward"*|*"diverged"*|*"have diverged"*)
-      warn "$s: DIVERGED — local commits not on the remote branch. Resolve with git, then re-run." ;;
+      item warn "<path>$s</> diverged — local commits not on the remote" ;;
     *"local changes"*|*"overwritten"*|*"uncommitted"*|*"stash"*)
-      warn "$s: DIRTY — uncommitted local changes (wsctl should have discarded these; please report)." ;;
-    *) warn "$s: pull failed — see git output above." ;;
+      item warn "<path>$s</> dirty — uncommitted local changes" ;;
+    *) item warn "<path>$s</> pull failed — see the output above" ;;
   esac
 }

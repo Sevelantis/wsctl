@@ -22,13 +22,21 @@ _docker_run() {
   bash "$path" "$@"                                  # child process: the script's own `set`/BASH_SOURCE apply
 }
 
-# cmd_docker — dispatch `wsctl docker <audit|clean>`.
+# _docker_whale <sentence> — wsctl's one closing line under docker's OWN chart. The chart is off-limits (docker
+# already has its header and colours); wsctl adds nothing on top and only this line at the end, and nothing at
+# all when docker's own command failed (so docker's error stays the last word).
+_docker_whale() { ui_rule; printf '🐳 %s%s%s\n' "$C_OK" "$1" "$C_RST" >&2; }
+
+# cmd_docker — dispatch `wsctl docker <audit|clean>`, then stamp the closing 🐳 line on success.
 cmd_docker() {
   local sub="${1:-}"; [ $# -gt 0 ] && shift
+  local rc
   case "$sub" in
     ""|-h|--help) docker_usage; return 0 ;;
-    audit) _docker_run "docker-space-audit.sh" "$@" ;;
-    clean) _docker_run "docker-cleanup.sh" "$@" ;;
+    audit) if _docker_run "docker-space-audit.sh" "$@"; then rc=0; else rc=$?; fi
+           [ "$rc" -eq 0 ] && _docker_whale "Read-only — nothing changed."; return "$rc" ;;
+    clean) if _docker_run "docker-cleanup.sh" "$@"; then rc=0; else rc=$?; fi
+           [ "$rc" -eq 0 ] && _docker_whale "Reclaim complete."; return "$rc" ;;
     backup) die "wsctl docker backup is not wired into wsctl yet — use the 'docker-backup' alias for now (coming soon)" 2 ;;
     *) die "unknown 'wsctl docker' subcommand '$sub' (try: wsctl docker --help)" 2 ;;
   esac

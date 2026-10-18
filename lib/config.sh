@@ -32,14 +32,18 @@ url_for() {
 # A template's path relative to templates/ is its destination under $ROOT, e.g.:
 #   templates/.mcp.json                            → $ROOT/.mcp.json
 #   templates/.devcontainer/docker-compose.client.yaml → $ROOT/.devcontainer/docker-compose.client.yaml
+# Prints one item per file — a present file reads the same as a freshly laid one, because from the user's side
+# the outcome is identical: the config is in place. The verb prints the section header around this.
 provision_config() {
-  local force="${1:-}" t rel dest laid=0
+  local force="${1:-}" t rel dest
   while IFS= read -r t; do
     rel="${t#"$WSCTL_HOME"/templates/}"           # path relative to templates/ = destination relative to $ROOT
     dest="$ROOT/$rel"
-    if [ -e "$dest" ] && [ "$force" != "--force" ]; then log "  config: $rel present (keep)"; continue; fi
-    mkdir -p -- "$(dirname -- "$dest")"
-    cp -- "$t" "$dest"; ok "  config: $rel"; laid=$((laid + 1))
+    if [ -e "$dest" ] && [ "$force" != "--force" ]; then
+      item ok "<path>$(basename -- "$rel")</>"    # already present — keep it
+    else
+      mkdir -p -- "$(dirname -- "$dest")"
+      cp -- "$t" "$dest"; item ok "<path>$(basename -- "$rel")</>"
+    fi
   done < <(find "$WSCTL_HOME/templates" -type f)
-  [ "$laid" -gt 0 ] || log "  config: all present"
 }

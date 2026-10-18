@@ -29,6 +29,7 @@ def _run(cmd, cwd, env, check=True):
 def _env(home: Path, remote_base: Path) -> dict:
     """A git env jailed to the sandbox: fails closed, can't bleed into the real repo."""
     e = dict(os.environ)
+    e.pop("ZDOTDIR", None)  # jail the zsh rc dir, else an ambient ZDOTDIR escapes the fake HOME
     e.update(
         HOME=str(home),
         GIT_CONFIG_GLOBAL=str(
