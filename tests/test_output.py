@@ -62,16 +62,20 @@ def test_verbose_is_not_a_set_x_trace(client):
 # --- version ---
 
 
-def test_version_subcommand_prints_the_tool_version(client):
-    """`wsctl version` prints `wsctl <ver>` to stdout and exits zero."""
+def test_version_prints_the_bare_value_to_stdout_and_the_card_to_stderr(client):
+    """version is the one stdout=data case: a script reading it gets the bare value; the human reads the card.
+
+    So stdout is exactly `0.1.0` (pipes stay clean), and the "wsctl" business card lands on stderr instead.
+    """
     r = client.wsctl("version")
     assert r.returncode == 0, r.stderr
-    assert r.stdout.strip().startswith("wsctl "), f"unexpected version line: {r.stdout!r}"
-    assert "0.1.0" in r.stdout, f"VERSION file not reflected: {r.stdout!r}"
+    assert r.stdout.strip() == "0.1.0", f"stdout must be the bare value, got {r.stdout!r}"
+    assert "wsctl" in r.stderr, f"the business card should be on stderr: {r.stderr!r}"
+    assert "wsctl" not in r.stdout, f"the card leaked onto stdout (would break a pipe): {r.stdout!r}"
 
 
 def test_version_flags_match_the_subcommand(client):
-    """`--version` and `-V` print the same line as the `version` subcommand."""
+    """`--version` and `-V` put the same bare value on stdout as the `version` subcommand."""
     base = client.wsctl("version").stdout.strip()
     for flag in ("--version", "-V"):
         r = client.wsctl(flag)
@@ -79,12 +83,10 @@ def test_version_flags_match_the_subcommand(client):
         assert r.stdout.strip() == base, f"{flag} disagreed with `version`: {r.stdout!r} vs {base!r}"
 
 
-def test_version_needs_no_key_or_network(client, tmp_path):
-    """version is pure local read: it works in a bare dir with no .env and no remotes configured."""
-    bare = tmp_path / "empty"
-    bare.mkdir()
+def test_version_needs_no_key_or_network(client):
+    """version is pure local read: it works with no key, never consulting .env for a token."""
     r = client.wsctl("version")  # client repo has a dummy .env, but version must not consult it
     assert r.returncode == 0, r.stderr
-    # and with the token var explicitly absent from the environment, it still prints:
+    # and with the token var explicitly absent from the environment, it still prints the bare value:
     r2 = client.wsctl("version", extra_env={"GH_TOKEN_RO_INFRA": ""})
-    assert r2.returncode == 0 and r2.stdout.strip().startswith("wsctl ")
+    assert r2.returncode == 0 and r2.stdout.strip() == "0.1.0"

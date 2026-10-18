@@ -118,6 +118,26 @@ def test_reset_removes_the_wsctl_function_from_the_rc(client, tmp_path):
     assert "# existing user content" in text, "reset clobbered the user's own rc content"
 
 
+def test_install_keeps_an_rc_valid_when_it_lacks_a_trailing_newline(client, tmp_path):
+    """An rc whose last line has no trailing newline (e.g. a venv-activate snippet ending in `fi`) must not get
+    our marker glued onto it. Before the newline guard, the block appended as `fi# wsctl-alias-begin`, which
+    leaves the `if` unterminated — a syntax error that breaks the shell and our own block-strip."""
+    home = _home(tmp_path)
+    rc = home / ".bashrc"
+    rc.write_text(
+        'if [ -f "${PWD}/.venv/bin/activate" ];then\n'
+        '    source "${PWD}/.venv/bin/activate" > /dev/null 2>&1\n'
+        "fi"  # deliberately NO trailing newline — the trigger
+    )
+    r = client.wsctl("install", extra_env={"HOME": str(home), "SHELL": "/bin/bash"})
+    assert r.returncode == 0, r.stderr
+    text = rc.read_text()
+    assert "fi# wsctl-alias-begin" not in text, "the marker glued onto the previous line (no newline guard)"
+    assert BEGIN in text, "the wsctl block was not written"
+    syntax = subprocess.run(["bash", "-n", str(rc)], text=True, capture_output=True)
+    assert syntax.returncode == 0, f"install left the rc syntactically broken:\n{syntax.stderr}"
+
+
 def test_the_written_function_resolves_and_runs_from_a_subdir(client, tmp_path):
     """Source the rc, then `wsctl` from a deep subdir must find and run the project's own tool."""
     home = _home(tmp_path)

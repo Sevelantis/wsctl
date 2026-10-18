@@ -81,31 +81,35 @@ shell_strip_block() {
 # rc never blocks the others, and a shell we cannot write to is never fatal — the user can still run the tool by
 # path. Each outcome gets its own message.
 shell_wire_alias() {
-  local targets rc had wrote="" refreshed="" any=0
+  local targets rc had any=0
   if ! targets="$(shell_rc_targets)"; then
-    warn "wsctl command not set up, because your shell is neither zsh nor bash (and no ~/.zshrc or ~/.bashrc exists) — run it as: bash .wsctl/wsctl.sh <command>"
+    item warn "not set up, because your shell is neither zsh nor bash — run it as <cmd>bash .wsctl/wsctl.sh</>"
     return 0
   fi
   while IFS= read -r rc; do
     [ -n "$rc" ] || continue
     if [ ! -e "$rc" ] && ! : > "$rc" 2>/dev/null; then
-      warn "wsctl command not set up in $rc, because it could not be created"; continue
+      item warn "could not create <path>$rc</>"; continue
     fi
     if [ ! -w "$rc" ]; then
-      warn "wsctl command not set up in $rc, because it is not writable"; continue
+      item warn "<path>$rc</> is not writable"; continue
     fi
     had=0; grep -qF "$ALIAS_BEGIN" "$rc" 2>/dev/null && had=1
     if ! shell_strip_block "$rc"; then
-      warn "wsctl command not set up in $rc, because it could not be updated"; continue
+      item warn "could not update <path>$rc</>"; continue
     fi
+    # The rc may not end in a newline (e.g. a venv-activate snippet ending in `fi`); appending the
+    # block directly would glue our marker onto that last line — breaking the shell and our own strip.
+    [ -s "$rc" ] && [ -n "$(tail -c1 "$rc" 2>/dev/null)" ] && printf '\n' >> "$rc"
     shell_alias_block >> "$rc"; any=1
-    if [ "$had" -eq 1 ]; then refreshed="${refreshed:+$refreshed }$rc"; else wrote="${wrote:+$wrote }$rc"; fi
   done <<EOF
 $targets
 EOF
-  [ -n "$wrote" ]     && ok   "wsctl command added to:$wrote — open a new terminal, or source that file."
-  [ -n "$refreshed" ] && info "wsctl command refreshed in:$refreshed"
-  [ "$any" -eq 1 ]    || warn "wsctl command not set up anywhere — run it as: bash .wsctl/wsctl.sh <command>"
+  if [ "$any" -eq 1 ]; then
+    item ok "<cmd>wsctl</> on your PATH"
+  else
+    item warn "not set up anywhere — run it as <cmd>bash .wsctl/wsctl.sh</>"
+  fi
   return 0
 }
 
@@ -113,14 +117,15 @@ EOF
 # scans both shells, not just $SHELL, so the block is cleaned up wherever install may have written it. No-op if
 # we never wrote it anywhere.
 shell_unwire_alias() {
-  local sh rc removed=""
+  local sh rc left=0
   for sh in zsh bash; do
     rc="$(shell_rc_for "$sh")"
     [ -f "$rc" ] || continue
     grep -qF "$ALIAS_BEGIN" "$rc" 2>/dev/null || continue
-    if [ ! -w "$rc" ]; then warn "wsctl command left in $rc — it is not writable to remove."; continue; fi
-    if shell_strip_block "$rc"; then removed="${removed:+$removed }$rc"; else warn "wsctl command could not be removed from $rc."; fi
+    if [ ! -w "$rc" ]; then item warn "left in <path>$rc</> — not writable to remove"; left=1; continue; fi
+    shell_strip_block "$rc" || { item warn "could not remove from <path>$rc</>"; left=1; }
   done
-  [ -n "$removed" ] && ok "wsctl command removed from:$removed"
+  # Post-state is "not on PATH" whether we removed the block or it was never there; say so unless a write blocked it.
+  [ "$left" -eq 0 ] && item ok "<cmd>wsctl</> removed from PATH"
   return 0
 }

@@ -21,7 +21,7 @@ export VERBOSE
 WSCTL_HOME="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" && pwd)"; export WSCTL_HOME
 
 # shellcheck source=/dev/null
-for _m in output token config git visibility drift docker shell verbs; do . "$WSCTL_HOME/lib/$_m.sh"; done
+for _m in output ui token config git visibility drift docker shell verbs; do . "$WSCTL_HOME/lib/$_m.sh"; done
 
 # Resolve the project root from where the tool is installed, not from $PWD — so every verb behaves the
 # same whether you run it from the project root or from inside the launcher dir. A client always has the

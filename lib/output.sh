@@ -13,5 +13,5 @@ log()   { printf '%s%s%s\n' "$C_DIM" "$*" "$C_RST" >&2; }
 info()  { printf '%s\n' "$*" >&2; }
 ok()    { printf '%s✓%s %s\n' "$C_GRN" "$C_RST" "$*" >&2; }
 warn()  { printf '%s⚠%s %s\n' "$C_YEL" "$C_RST" "$*" >&2; }
-die()   { printf '%s✗ %s%s\n' "$C_RED$C_BLD" "$*" "$C_RST" >&2; exit "${2:-1}"; }
+die()   { printf '%s✗ %s%s\n' "$C_RED$C_BLD" "$1" "$C_RST" >&2; exit "${2:-1}"; }
 debug() { [ "$VERBOSE" = 1 ] || return 0; printf '%s» %s%s\n' "$C_DIM" "$*" "$C_RST" >&2; }

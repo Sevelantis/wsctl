@@ -35,23 +35,26 @@ vis_remove_exclude() {
 }
 
 # provision_invisible <token> — clone each managed submodule (or keep the existing one current), then hide it.
+# Prints one aligned pair per submodule; on a failed clone, git's OWN captured output is indented beneath it,
+# then the single next step that is wsctl's to offer. The verb prints the section header around this.
 provision_invisible() {
   local tok="$1" rc=0 s out
-  info "→ ensuring submodules (invisible) …"
   for s in $SUBMODULES; do
     if [ -e "$ROOT/$s/.git" ]; then
       discard_dirty "$s"; ensure_on_branch "$s"          # float on the checked-out branch; re-run safe
-      log "  $s: present — on $(current_branch "$s") (float)"
+      pair ok "<path>$s</>" "on <branch>$(current_branch "$s")</>"
       continue
     fi
     info "  → cloning $s …"                               # narrate the slow step so it never looks hung
     debug "clone $(url_for "$s") → $ROOT/$s (branch $DEFAULT_BRANCH)"   # the command, minus the token (injected via env)
     if out="$(git_ro "$tok" -C "$ROOT" clone --quiet --branch "$DEFAULT_BRANCH" "$(url_for "$s")" "$s" 2>&1)"; then
       ensure_on_branch "$s"
-      ok "  $s: cloned (on $(current_branch "$s"))"
+      pair ok "<path>$s</>" "on <branch>$(current_branch "$s")</>"
     else
-      printf '%s\n' "$out" | sed 's/^/      /' >&2
-      warn "  $s: clone FAILED — check $TOKEN_VAR has Contents:Read on $(url_for "$s")"; rc=1
+      pair fail "<path>$s</>" "clone failed"
+      printf '%s\n' "$out" | while IFS= read -r _l; do cmdlog "$_l"; done   # git's own words, indented + dim
+      fix "check <path>$TOKEN_VAR</> has Contents:Read on <path>$s</>"
+      rc=1
     fi
   done
   vis_apply_exclude                                       # hide them from the parent (local to this clone, nothing committed)
