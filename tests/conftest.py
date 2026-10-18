@@ -30,6 +30,10 @@ def _env(home: Path, remote_base: Path) -> dict:
     """A git env jailed to the sandbox: fails closed, can't bleed into the real repo."""
     e = dict(os.environ)
     e.pop("ZDOTDIR", None)  # jail the zsh rc dir, else an ambient ZDOTDIR escapes the fake HOME
+    # Same jail for bash: a non-interactive `bash wsctl.sh` sources $BASH_ENV (and $ENV in POSIX mode),
+    # so an ambient one would read host shell config into the sandbox — the bash twin of the ZDOTDIR leak.
+    e.pop("BASH_ENV", None)
+    e.pop("ENV", None)
     e.update(
         HOME=str(home),
         GIT_CONFIG_GLOBAL=str(
