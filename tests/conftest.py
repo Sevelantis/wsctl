@@ -29,9 +29,8 @@ def _run(cmd, cwd, env, check=True):
 def _env(home: Path, remote_base: Path) -> dict:
     """A git env jailed to the sandbox: fails closed, can't bleed into the real repo."""
     e = dict(os.environ)
-    e.pop("ZDOTDIR", None)  # jail the zsh rc dir, else an ambient ZDOTDIR escapes the fake HOME
-    # Same jail for bash: a non-interactive `bash wsctl.sh` sources $BASH_ENV (and $ENV in POSIX mode),
-    # so an ambient one would read host shell config into the sandbox — the bash twin of the ZDOTDIR leak.
+    # jail for bash and zsh
+    e.pop("ZDOTDIR", None)
     e.pop("BASH_ENV", None)
     e.pop("ENV", None)
     e.update(
@@ -46,9 +45,7 @@ def _env(home: Path, remote_base: Path) -> dict:
         GIT_CEILING_DIRECTORIES=str(
             home.parent
         ),  # git can't walk up past the sandbox root
-        WSCTL_REMOTE_BASE=str(
-            remote_base
-        ),  # clone from local bare repos, not github
+        WSCTL_REMOTE_BASE=str(remote_base),  # clone from local bare repos, not github
     )
     return e
 
