@@ -1,2 +1,1 @@
-# Test dependencies installed in CI (see .github/workflows/tests.yaml).
 pytest==9.1.1
