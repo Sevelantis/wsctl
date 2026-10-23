@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-SUBMODULES = (".claude", "devcontainers")
+from settings import SUBMODULES
 TMP = Path(tempfile.gettempdir()).resolve()   # the disposable corner (/tmp); never your repo
 
 
@@ -46,3 +46,13 @@ def test_each_client_starts_from_a_clean_world(client):
     for sub in SUBMODULES:
         assert not (client.path / sub).exists(), f"{sub} leaked into a fresh client"
     assert "DUMMY" in (client.path / ".env").read_text(), "the client is not using the dummy token"
+
+
+def test_suite_runs_only_from_a_wsctl_named_checkout():
+    """The suite must refuse to run from any checkout not named exactly 'wsctl', so destructive verbs never escape."""
+    import conftest
+
+    assert conftest.ROOT.name == "wsctl", "this checkout is not named 'wsctl' — the safety gate should have aborted"
+    assert conftest._unsafe_checkout("wsctl") is None            # the one safe name is allowed
+    assert conftest._unsafe_checkout(".wsctl") is not None       # '.wsctl' resolves the root to the parent dir — refused
+    assert conftest._unsafe_checkout("wsctl-dev") is not None    # anything else is refused too

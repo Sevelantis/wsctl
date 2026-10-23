@@ -24,7 +24,7 @@ def _deploy(repo: Path) -> Path:
     """Lay the tool out as a real client has it: cloned into <project>/.wsctl/ (so the locator has a target)."""
     wsctl_dir = repo / ".wsctl"
     wsctl_dir.mkdir()
-    for item in ("wsctl.sh", "lib", "templates"):
+    for item in ("wsctl.sh", "lib"):
         src = TOOL / item
         (shutil.copytree if src.is_dir() else shutil.copy2)(src, wsctl_dir / item)
     return wsctl_dir

@@ -3,8 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]  # wsctl/
-SUBMODULES = (".claude", "devcontainers")
-DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
+from settings import SUBMODULES, DUMMY_FILE, settings
 
 
 # --- helpers ---
@@ -72,20 +71,15 @@ def test_invisible_update_keeps_zero_trace(client):
         assert not any(sub in ln for ln in lines), f"{sub} became visible after update\n{lines}"
 
 
-# --- install: config templates and mode guard ---
+# --- install: config from the skeleton and mode guard ---
 
 
-def test_install_lays_the_config_templates(client):
-    """Every template must land at its relative path; the compose override must go in .devcontainer/, not the root, or it is ignored."""
-    tdir = ROOT / "templates"
-    rels = sorted(p.relative_to(tdir).as_posix() for p in tdir.rglob("*") if p.is_file())
-    assert rels, "no templates found to lay — fixture/tree problem"
+def test_install_lays_the_config_from_the_skeleton(client):
+    """Every file the skeleton provisions must land at its destination; the compose override must go in .devcontainer/, not the root."""
     assert client.wsctl("install").returncode == 0
-    for rel in rels:
-        assert (client.path / rel).exists(), f"config template {rel} was not laid at its correct relative path by install"
+    for rel in settings.skeleton_dests:
+        assert (client.path / rel).exists(), f"config file {rel} was not laid at its destination by install"
     # the compose override belongs under .devcontainer/, never flattened to the project root
-    assert (client.path / ".devcontainer" / "docker-compose.client.yaml").exists(), \
-        "docker-compose.client.yaml missing from .devcontainer/ — the devcontainer can't find its client override"
     assert not (client.path / "docker-compose.client.yaml").exists(), \
         "docker-compose.client.yaml was laid at the project root — it belongs in .devcontainer/"
 
