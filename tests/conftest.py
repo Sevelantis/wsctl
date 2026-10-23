@@ -9,11 +9,34 @@ from pathlib import Path
 
 import pytest
 
+from settings import settings, SUBMODULES, DUMMY_FILE, DUMMY_TOKEN
+
 ROOT = Path(__file__).resolve().parents[1]  # wsctl/
 WSCTL = ROOT / "wsctl.sh"
-SUBMODULES = (".claude", "devcontainers")
-DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
-DUMMY_TOKEN = "github_pat_DUMMY_0000000000000000000000"
+
+# --- safety gate: only a 'wsctl' checkout may run the suite ---
+# The tool resolves the project root from its own folder name. A checkout named '.wsctl' makes it treat the
+# PARENT as the project root, so reset/install would act on the real repo instead of the /tmp sandbox. Only
+# 'wsctl' is safe; any other name aborts the run before a single test — and its destructive verbs — can run.
+SAFE_CHECKOUT_NAME = "wsctl"
+
+
+def _unsafe_checkout(name: str):
+    """Return an error message if `name` is not the one checkout name safe to run destructive verbs from."""
+    if name != SAFE_CHECKOUT_NAME:
+        return (
+            f"refusing to run: the wsctl checkout must be named {SAFE_CHECKOUT_NAME!r}, not {name!r}. "
+            "A different name (e.g. '.wsctl') makes the tool resolve the project root to the PARENT "
+            "directory, so destructive verbs would act outside the sandbox. Rename the checkout and re-run."
+        )
+    return None
+
+
+def pytest_configure(config):
+    """Abort the whole session before any test runs unless this checkout is named exactly 'wsctl'."""
+    message = _unsafe_checkout(ROOT.name)
+    if message:
+        raise pytest.UsageError(message)
 
 
 # --- helpers ---
@@ -75,6 +98,12 @@ def remotes(home, tmp_path_factory) -> Path:
         work = base / f"{name}.work"
         _run(["git", "clone", "-q", str(bare), str(work)], base, env)
         (work / DUMMY_FILE[name]).write_text(f"{name} content\n")
+        if name == "devcontainers":
+            sk = work / ".devcontainer" / "client"
+            sk.mkdir(parents=True)
+            for bp in settings.skeleton:
+                (sk / bp.name).write_text(bp.content)
+            (sk / "provision.list").write_text(settings.manifest_text)
         _run(["git", "add", "-A"], work, env)
         _run(["git", "commit", "-qm", "seed"], work, env)
         _run(["git", "push", "-q", "origin", "master"], work, env)

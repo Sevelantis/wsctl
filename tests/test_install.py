@@ -1,18 +1,12 @@
 """install (standard-submodule mode) — one install takes a fresh repo to a working workspace; currently skipped."""
 
-from pathlib import Path
-
 import pytest
 
-# These tests cover the standard-submodule mode, which is not implemented yet; invisible mode is tested in
-# test_visibility.py (including config templates). Kept so they can be re-enabled with that mode.
+# These tests cover the standard-submodule mode, which is not implemented yet; invisible mode (including the
+# config it lays) is tested in test_visibility.py. Kept so they can be re-enabled with that mode.
 pytestmark = pytest.mark.skip(reason="standard-submodule mode is not implemented; invisible mode is tested in test_visibility.py")
 
-ROOT = Path(__file__).resolve().parents[1]  # wsctl/
-SUBMODULES = (".claude", "devcontainers")
-DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
-# The config files install lays down, read from the real templates/ directory.
-TEMPLATES = sorted(p.name for p in (ROOT / "templates").iterdir() if p.is_file())
+from settings import SUBMODULES, DUMMY_FILE
 
 
 def test_install_provisions_both_submodules_with_content(client):
@@ -31,13 +25,6 @@ def test_install_leaves_submodules_on_a_branch(client):
     for sub in SUBMODULES:
         head = client.git("-C", sub, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
         assert head == "master", f"{sub} is on {head!r}, not a branch — a detached setup breaks `update`"
-
-
-def test_install_lays_the_config_templates(client):
-    """Every template must be copied into the project; a missing one means the client cannot Rebuild."""
-    client.wsctl("install")
-    for name in TEMPLATES:
-        assert (client.path / name).exists(), f"config template {name} was not laid"
 
 
 def test_install_sets_ignore_all_both_places(client):

@@ -2,7 +2,7 @@
 
 import shutil
 
-SUBMODULES = (".claude", "devcontainers")
+from settings import SUBMODULES
 
 
 def _install(client):

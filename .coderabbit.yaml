@@ -75,5 +75,15 @@ reviews:
     gitleaks:
       enabled: false
 
+# Keep a public repo safe from drive-by abuse: don't let a public pull request teach the
+# bot anything that could resurface elsewhere, and don't let strangers drive it by comment.
+knowledge_base:
+  learnings:
+    scope: "local"               # this repo's learnings stay here; never pulled from or pushed to others
+  issues:
+    scope: "local"
+
 chat:
-  auto_reply: true
+  auto_reply: false              # the bot replies only when explicitly @-mentioned — closes the drive-by chat path
+  allow_non_org_members: false   # outsiders can't drive the bot by comment (automatic review of their PR still runs);
+                                 # takes effect when the repo is owned by a GitHub organization

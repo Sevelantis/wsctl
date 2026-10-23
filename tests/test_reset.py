@@ -1,8 +1,6 @@
 """reset — removes the managed submodules and their git state so `install` can rebuild, without touching shared files."""
 
-SUBMODULES = (".claude", "devcontainers")
-DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
-SHARED = (".mcp.json", ".npmrc", ".devcontainer/docker-compose.client.yaml", ".env")  # compose lives under .devcontainer/
+from settings import SUBMODULES, DUMMY_FILE, SHARED
 
 
 def test_reset_removes_the_submodule_folders(client):

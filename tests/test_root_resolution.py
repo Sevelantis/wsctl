@@ -12,14 +12,14 @@ import subprocess
 from pathlib import Path
 
 TOOL = Path(__file__).resolve().parents[1]      # the wsctl/ checkout under test
-SUBMODULES = (".claude", "devcontainers")
+from settings import SUBMODULES
 
 
 def _deploy(repo: Path) -> Path:
     """Lay the tool out the way a real client has it: cloned into <project>/.wsctl/."""
     wsctl_dir = repo / ".wsctl"
     wsctl_dir.mkdir()
-    for item in ("wsctl.sh", "lib", "templates"):
+    for item in ("wsctl.sh", "lib"):
         src = TOOL / item
         (shutil.copytree if src.is_dir() else shutil.copy2)(src, wsctl_dir / item)
     return wsctl_dir

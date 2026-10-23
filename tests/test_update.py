@@ -1,7 +1,6 @@
 """update — pulls the managed submodules; covers narrowing, dirty-discard, detached HEAD, and the missing-token guard."""
 
-SUBMODULES = (".claude", "devcontainers")
-DUMMY_FILE = {".claude": "abc.txt", "devcontainers": "xyz.txt"}
+from settings import SUBMODULES, DUMMY_FILE
 TOKEN_VAR = "GH_TOKEN_RO_INFRA"
 
 

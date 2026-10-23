@@ -3,14 +3,14 @@
 # usage — print the top-level help text.
 usage() { cat <<'EOF'
 wsctl — workspace control
-Sync this project to target state: lay config from templates, hold the read-only token,
+Sync this project to target state: lay config from the platform skeleton, hold the read-only token,
 and keep the managed submodules (.claude, devcontainers) current. Never rebuilds.
 
 USAGE
   wsctl <command> [options]
 
 COMMANDS
-  install   Lay config from templates, capture the token, clone both submodules (hidden). Idempotent.
+  install   Clone both submodules (hidden), lay config from the platform skeleton, capture the token. Idempotent.
   update    Pull both submodules' current branch (git pull --ff-only). [submodule] optional.
   status    Read-only: each submodule's branch + dirty state. No network, no token.
   health    Read-only: report drift (missing / detached / un-hidden submodules). No network, no token.
@@ -24,7 +24,7 @@ OPTIONS
   -V, --version   Print the tool version and exit
   -v, --verbose   Show the plumbing (resolved paths, git commands); never prints a secret
       --no-color  Plain output (auto when piped)
-  install --force     Overwrite scaffolded config from templates
+  install --force     Overwrite scaffolded config from the platform skeleton
   install --check     Report present/missing config + submodules; non-zero if incomplete
 EOF
 }
@@ -55,18 +55,26 @@ cmd_version() {
   printf '%s\n' "$ver"
 }
 
-# install_check — report which config files and submodules are present; non-zero if any is missing.
+# install_check — report which submodules and provisioned files are present; non-zero if anything is missing.
+# Config comes from the platform skeleton inside the devcontainers submodule, so it can only be verified once
+# that submodule is cloned; before then, report the submodule as the thing to fix.
 install_check() {
-  local incomplete=0 s rel t
-  info "config:"
-  while IFS= read -r t; do
-    rel="${t#"$WSCTL_HOME"/templates/}"           # relative path = its destination under $ROOT (mirrors provision_config)
-    if [ -e "$ROOT/$rel" ]; then ok "  $rel"; else warn "  $rel missing"; incomplete=1; fi
-  done < <(find "$WSCTL_HOME/templates" -type f)
+  local incomplete=0 s sk manifest blueprint dest policy
   info "submodules:"
   for s in $SUBMODULES; do
     if [ -e "$ROOT/$s/.git" ]; then ok "  $s on $(current_branch "$s")"; else warn "  $s not cloned"; incomplete=1; fi
   done
+  info "config:"
+  sk="$(skeleton_dir)"; manifest="$sk/provision.list"
+  if [ ! -f "$manifest" ]; then
+    warn "  not provisioned yet — run 'wsctl install' to clone the platform skeleton"; incomplete=1
+  else
+    while read -r blueprint dest policy; do
+      case "$blueprint" in ''|'#'*) continue ;; esac
+      [ -n "$dest" ] || continue
+      if [ -e "$ROOT/$dest" ]; then ok "  $dest"; else warn "  $dest missing"; incomplete=1; fi
+    done < "$manifest"
+  fi
   return "$incomplete"
 }
 
@@ -89,10 +97,9 @@ report_env() {
 # the caller to print the one closing footer (so `install` and `reinstall` can each stamp their own emoji).
 _install_body() {
   local force="$1" tok
-  section "📦" "config"
-  provision_config "$force"                            # one item per template
+  # Checks first — nothing is written until the environment is known-good.
   if ! git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    item fail "not a git repository here"; _fail_kind="stopped"; _fail_reason="not a git repo"; return 1
+    section "🔎" "checks"; item fail "not a git repository here"; _fail_kind="stopped"; _fail_reason="not a git repo"; return 1
   fi
   require_git_version                                  # fatal pre-flight: git missing or too old
 
@@ -108,6 +115,9 @@ _install_body() {
     _fail_kind="incomplete"; _fail_reason="a clone failed"; return 1
   fi
 
+  section "📦" "config"
+  provision_managed seed "$force"                      # render the client skeleton from the pulled submodule
+
   section "🙈" "hidden"
   if vis_exclude_applied; then item ok "from <cmd>git status</>"; else item warn "not hidden from <cmd>git status</>"; fi
 
@@ -119,7 +129,7 @@ _install_body() {
   return 0
 }
 
-# cmd_install — lay config from templates, clone and hide the managed submodules, wire the shell, check .env.
+# cmd_install — clone and hide the managed submodules, lay config from the platform skeleton, wire the shell, check .env.
 cmd_install() {
   local force="" check="" a
   for a in "$@"; do case "$a" in
@@ -188,6 +198,8 @@ cmd_update() {
       diagnose_pull "$s" "$out"; rc=1
     fi
   done
+  section "📦" "config"
+  provision_managed sync                               # carry the client's provisioned pins forward after the pull
   if [ "$done_ok" -eq "$total" ]; then
     summary "♻️" ok "$done_ok/$total submodules updated."
   else
