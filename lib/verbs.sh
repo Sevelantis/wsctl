@@ -24,7 +24,7 @@ OPTIONS
   -V, --version   Print the tool version and exit
   -v, --verbose   Show the plumbing (resolved paths, git commands); never prints a secret
       --no-color  Plain output (auto when piped)
-  install --force     Overwrite scaffolded config from the platform skeleton
+  install --force     Overwrite scaffolded config with the platform default (your devcontainer edits are kept)
   install --check     Report present/missing config + submodules; non-zero if incomplete
 EOF
 }

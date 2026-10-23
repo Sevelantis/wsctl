@@ -88,15 +88,25 @@ render_seed() {
   mkdir -p -- "$(dirname -- "$dst")"; cp -- "$bp" "$dst"; item ok "<path>$label</>"
 }
 
+# safe_rel <path> — true when <path> stays inside the project: no leading slash and no '..' segment.
+safe_rel() {
+  case "$1" in /*|..|../*|*/..|*/../*) return 1 ;; esac
+  return 0
+}
+
 # provision_managed <seed|sync> — render each managed file per the skeleton manifest. seed (install) lays files
 # and bumps; sync (update) bumps the files already present and never seeds. Quiet no-op until the skeleton exists.
 provision_managed() {
   local mode="${1:-seed}" force="${2:-}" sk manifest blueprint dest policy bp dst
   sk="$(skeleton_dir)"; manifest="$sk/provision.list"
-  [ -f "$manifest" ] || return 0
+  if [ ! -f "$manifest" ]; then
+    if [ "$mode" = seed ]; then item warn "platform skeleton not found in <path>$SKELETON_SUBMODULE</> — no config laid"; fi
+    return 0
+  fi
   while read -r blueprint dest policy; do
     case "$blueprint" in ''|'#'*) continue ;; esac
     [ -n "$dest" ] && [ -n "$policy" ] || continue
+    safe_rel "$blueprint" && safe_rel "$dest" || { item warn "<path>$dest</> unsafe path — skipped"; continue; }
     bp="$sk/$blueprint"; dst="$ROOT/$dest"
     [ -f "$bp" ] || { item warn "<path>$dest</> blueprint missing"; continue; }
     case "$policy" in
